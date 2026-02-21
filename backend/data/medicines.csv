@@ -1,0 +1,31 @@
+name,stock,unit_price,unit_type,prescription_required,category,max_daily_dose
+Paracetamol,150,2.5,tablets,false,Pain Relief,8
+Ibuprofen,80,3.2,tablets,false,Pain Relief,6
+Amoxicillin,45,15.8,capsules,true,Antibiotic,N/A
+Metformin,120,8.5,tablets,true,Diabetes,4
+Amlodipine,90,7.2,tablets,true,Hypertension,1
+Atorvastatin,60,22.5,tablets,true,Cholesterol,1
+Levothyroxine,35,12.8,tablets,true,Thyroid,2
+Losartan,55,18.3,tablets,true,Hypertension,2
+Sertraline,28,25.6,tablets,true,Antidepressant,1
+Omeprazole,72,9.8,capsules,false,Antacid,2
+Aspirin,200,1.5,tablets,false,Pain Relief,12
+Cetirizine,100,4.0,tablets,false,Allergy,1
+Azithromycin,30,12.0,tablets,true,Antibiotic,N/A
+Metoprolol,50,6.5,tablets,true,Hypertension,2
+Simvastatin,40,20.0,tablets,true,Cholesterol,1
+Albuterol,25,18.0,inhaler,true,Asthma,N/A
+Gabapentin,60,10.5,capsules,true,Nerve Pain,9
+Pantoprazole,80,9.0,tablets,true,Antacid,1
+Prednisone,40,5.0,tablets,true,Steroid,N/A
+Montelukast,55,14.0,tablets,true,Asthma,1
+Escitalopram,35,24.0,tablets,true,Antidepressant,1
+Clopidogrel,45,28.0,tablets,true,Heart,1
+Furosemide,65,3.5,tablets,true,Diuretic,2
+Ciprofloxacin,30,11.0,tablets,true,Antibiotic,N/A
+Doxycycline,35,8.0,capsules,true,Antibiotic,N/A
+Diphenhydramine,90,3.0,tablets,false,Allergy,6
+Loratadine,85,4.5,tablets,false,Allergy,1
+Vitamin D3,150,5.0,softgels,false,Supplement,1
+B12 Complex,100,8.0,tablets,false,Supplement,1
+Magnesium Citrate,70,12.0,tablets,false,Supplement,2

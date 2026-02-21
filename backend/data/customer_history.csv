@@ -1,0 +1,12 @@
+user_id,name,phone,email,medicine,dosage_frequency,last_purchase_date,last_quantity,avg_monthly_usage
+CUST001,Rahul Sharma,+919876543210,rahul@email.com,Metformin,daily,2026-01-15,90,120
+CUST002,Priya Patel,+919812345678,priya@email.com,Amlodipine,daily,2026-01-20,30,30
+CUST003,Amit Kumar,+918765432109,amit@email.com,Paracetamol,weekly,2026-02-01,50,60
+CUST004,Sneha R,+919823456789,sneha@email.com,Amoxicillin,daily,2026-01-25,20,25
+CUST005,Vijay S,+917654321098,vijay@email.com,Losartan,daily,2026-01-18,60,60
+CUST006,Anita M,+919834567890,anita@email.com,Atorvastatin,daily,2026-01-22,30,30
+CUST007,Ravi K,+918912345678,ravi@email.com,Sertraline,daily,2026-01-28,28,28
+CUST008,Geeta D,+919745678901,geeta@email.com,Levothyroxine,daily,2025-12-10,60,60
+CUST009,Suresh G,+917823456789,suresh@email.com,Omeprazole,daily,2026-02-02,60,60
+CUST010,Meena L,+919456789012,meena@email.com,Ibuprofen,weekly,2026-01-30,40,50
+CUST011,Urgent User,+919999999999,urgent@email.com,Metformin,daily,2026-01-08,30,30
