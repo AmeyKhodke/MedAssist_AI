@@ -41,20 +41,24 @@ def create_order(order: models.Order, background_tasks: BackgroundTasks):
     conn.close()
     
     if not medicine:
+        if trace: trace.end()
         raise HTTPException(status_code=404, detail="Medicine not found")
         
     if medicine['stock'] < order.quantity:
+        if trace: trace.end()
         raise HTTPException(status_code=400, detail=f"Insufficient stock. Available: {medicine['stock']}")
         
     if medicine['prescription_required']:
         # In Phase 1, we reject all prescription meds on direct API calls if no proof 
         # (Though we have no proof field yet)
+        if trace: trace.end()
         raise HTTPException(status_code=400, detail="Prescription required for this medicine")
 
     # 3. Deduct stock
     try:
         new_stock = database.update_stock(order.medicine, order.quantity)
     except ValueError as e:
+        if trace: trace.end()
         raise HTTPException(status_code=400, detail=str(e))
         
     # 4. Record order
@@ -64,6 +68,7 @@ def create_order(order: models.Order, background_tasks: BackgroundTasks):
     # Using background task to simulate async processing or just call directly
     # background_tasks.add_task(httpx.post, "http://localhost:8000/webhook/fulfill", json={"order_id": "ORD_MOCK", "status": "pending"})
     
+    if trace: trace.end()
     return {"status": "confirmed", "new_stock": new_stock}
 
 @app.post("/webhook/fulfill")
@@ -89,7 +94,12 @@ def agent_chat_process(request: ChatRequest):
 
     # --- CONFIRMATION LOGIC ---
     # Check if user said "yes" or "confirm"
-    if text.lower() in ["yes", "confirm", "ok", "sure", "please"]:
+    if text.lower() in ["no", "cancel", "abort", "nevermind"]:
+        resp = "Order cancelled."
+        database.save_chat_message(user_id, "assistant", resp)
+        return {"result": resp}
+
+    if text.lower() in ["yes", "confirm", "ok", "sure", "please", "confirm order"]:
         # Retrieve history to find the pending order
         # We need the last message from assistant
         history = database.get_chat_history(user_id)
@@ -131,29 +141,31 @@ def agent_chat_process(request: ChatRequest):
         # Re-process the original text with force_execute=True logic (or just normal flow but skip confirmation check)
         # To avoid recursion, let's extract and execute directly here.
         
-        extraction = agents.extractor.run(pending_text)
+        extraction = agents.extractor.run(pending_text, user_id=user_id)
         extraction["prescription_verified"] = request.prescription_verified # Reuse current status
-        safety = agents.safety.run(extraction)
+        safety = agents.safety.run(extraction, user_id=user_id)
         
         if not safety["approved"]:
              resp = f"Safety check failed: {safety['reason']}"
              database.save_chat_message(user_id, "assistant", resp)
              return {"result": resp, "status": "rejected"}
              
-        execution = agents.executor.run(safety, user_id)
+        execution = agents.executor.run(safety, user_id=user_id)
         if execution["status"] == "success":
             med_names = ", ".join([m['name'] for m in safety['medicines']])
             resp = f"Order Placed! {med_names}. Total: ₹{execution['total_price']}"
             database.save_chat_message(user_id, "assistant", resp)
+            langfuse_client.flush()
             return {"result": resp, "data": execution}
         else:
             resp = f"Order failed: {execution.get('error')}"
             database.save_chat_message(user_id, "assistant", resp)
+            langfuse_client.flush()
             return {"result": resp, "error": execution.get("error")}
 
     # --- NORMAL ORDER FLOW ---
     # 1. Extract Order
-    extraction = agents.extractor.run(text)
+    extraction = agents.extractor.run(text, user_id=user_id)
     if not extraction["medicines"]:
         # Check for suggestions
         suggestions = extraction.get("suggestions", [])
@@ -173,7 +185,7 @@ def agent_chat_process(request: ChatRequest):
     
     # 2. Safety Check (Preliminary)
     extraction["prescription_verified"] = request.prescription_verified
-    safety_result = agents.safety.run(extraction)
+    safety_result = agents.safety.run(extraction, user_id=user_id)
     
     if not safety_result["approved"]:
         resp = f"I cannot process this order. {safety_result['reason']}"
@@ -192,9 +204,10 @@ def agent_chat_process(request: ChatRequest):
         if r: total_est += r['unit_price'] * m['qty']
     conn.close()
     
-    resp = f"I found: {med_summary}. Total approx: ₹{total_est:.2f}. Do you want to confirm? (Type 'Yes')"
+    resp = f"I found: {med_summary}. Total approx: ₹{total_est:.2f}. Do you want to confirm?"
     database.save_chat_message(user_id, "assistant", resp)
     
+    langfuse_client.flush()
     return {
         "result": resp, 
         "data": {}, # No execution data yet
@@ -231,3 +244,36 @@ def send_notification(note: NotificationRequest):
 def get_user_notifications(user_id: str):
     return database.get_notifications(user_id)
 
+@app.get("/admin/approvals")
+def get_admin_approvals():
+    return database.get_pending_approvals()
+
+class ApprovalStatusUpdate(BaseModel):
+    status: str # "approved" or "rejected"
+
+@app.post("/admin/approvals/{approval_id}")
+def update_admin_approval(approval_id: int, update: ApprovalStatusUpdate):
+    if update.status not in ["approved", "rejected"]:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    
+    # In a real app we'd fetch the approval to get the user_id and medicine first
+    # For now we'll do a quick query
+    conn = database.get_db_connection()
+    approval = conn.execute("SELECT * FROM prescription_approvals WHERE id = ?", (approval_id,)).fetchone()
+    conn.close()
+    
+    if not approval:
+        raise HTTPException(status_code=404, detail="Approval request not found")
+
+    database.update_approval_status(approval_id, update.status)
+    
+    # Notify user
+    medicine = approval['medicine']
+    if update.status == "approved":
+        msg = f"Your prescription for {medicine} has been approved! You can now place your order."
+    else:
+        msg = f"Your prescription for {medicine} was rejected. Please contact support."
+    
+    database.create_notification(approval['user_id'], msg)
+    
+    return {"status": "success", "approval_id": approval_id, "new_status": update.status}
