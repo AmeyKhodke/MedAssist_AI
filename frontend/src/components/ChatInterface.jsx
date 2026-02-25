@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import VoiceChat, { speak } from './VoiceChat';
-import { Send, User, Bot, AlertCircle, CheckCircle, FileText } from 'lucide-react';
+import { Send, User, Bot, AlertCircle, CheckCircle, FileText, CheckCheck, MoreVertical, Paperclip } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -98,116 +98,138 @@ const ChatInterface = ({ userId = "GUEST_WEB" }) => {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] max-w-4xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
+    <div className="flex flex-col h-[calc(100vh-12rem)] md:h-[600px] w-full bg-slate-50/50 rounded-[2.5rem] shadow-xl overflow-hidden border border-slate-200/60 relative">
       
+      {/* Background Pattern */}
+      <div className="absolute inset-0 z-0 opacity-[0.03] bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPgo8cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSI4IiBmaWxsPSIjMDAwIiBmaWxsLW9wYWNpdHk9IjAuMDUiPjwvcmVjdD4KPHBhdGggZD0iTTAgMEw4IDhaTTAgOEw4IDBaIiBzdHJva2U9IiMwMDAiIHN0cm9rZS1vcGFjaXR5PSIwLjA1IiBzdHJva2Utd2lkdGg9IjEiPjwvcGF0aD4KPC9zdmc+')] mix-blend-multiply"></div>
+
       {/* Header / Status Bar */}
-      <div className="bg-slate-50 px-6 py-3 border-b border-slate-200 flex justify-between items-center">
-        <div className="flex items-center gap-2">
-           <div className={`w-3 h-3 rounded-full ${rxVerified ? 'bg-green-500' : 'bg-orange-400'}`}></div>
-           <span className="text-sm text-slate-600">
-             {rxVerified ? 'Prescription Verified ✅' : 'No Active Prescription ⚠️'}
-           </span>
+      <div className="bg-white/80 backdrop-blur-xl px-6 py-4 border-b border-slate-200/60 flex justify-between items-center relative z-10 shadow-sm">
+        <div className="flex items-center gap-3">
+           <div className="relative">
+             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center shadow-md">
+                 <Bot size={22} className="text-white" />
+             </div>
+             <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></div>
+           </div>
+           <div>
+             <h3 className="font-bold text-slate-900 leading-tight">AI Pharmacist</h3>
+             <div className="flex items-center gap-2">
+                 <span className="text-xs font-medium text-emerald-600">Online</span>
+                 <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                 <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm ${rxVerified ? 'text-emerald-700 bg-emerald-50' : 'text-orange-700 bg-orange-50'}`}>
+                   {rxVerified ? 'Rx Verified' : 'No Rx'}
+                 </span>
+             </div>
+           </div>
         </div>
-        <button 
-          onClick={() => setRxVerified(!rxVerified)}
-          className="text-xs text-blue-600 hover:underline"
-        >
-          {rxVerified ? 'Unlink Rx' : '[DEBUG] Mock Upload Rx'}
-        </button>
+        <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setRxVerified(!rxVerified)}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-full text-xs font-bold transition-colors border border-slate-200"
+            >
+              Toggle Rx Mod
+            </button>
+            <button className="p-2 text-slate-400 hover:text-slate-600 transition-colors">
+                <MoreVertical size={20} />
+            </button>
+        </div>
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 relative z-10 scroll-smooth">
         {messages.map((msg, idx) => (
           <div 
             key={idx} 
             className={cn(
-              "flex gap-4 max-w-[85%]", 
-              msg.role === 'user' ? "ml-auto flex-row-reverse" : "mr-auto"
+              "flex flex-col max-w-[85%] md:max-w-[75%] animate-in fade-in slide-in-from-bottom-2 duration-300", 
+              msg.role === 'user' ? "ml-auto items-end" : "mr-auto items-start"
             )}
           >
-            {/* Avatar */}
-            <div className={cn(
-              "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
-              msg.role === 'user' ? "bg-blue-600 text-white" : "bg-emerald-600 text-white"
-            )}>
-              {msg.role === 'user' ? <User size={20} /> : <Bot size={20} />}
-            </div>
-
             {/* Bubble */}
             <div className={cn(
-              "p-4 rounded-2xl shadow-sm text-sm leading-relaxed",
+              "px-5 py-3.5 shadow-sm text-[15px] leading-relaxed relative group",
               msg.role === 'user' 
-                ? "bg-blue-600 text-white rounded-tr-none" 
-                : "bg-white border border-slate-200 text-slate-800 rounded-tl-none"
+                ? "bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-2xl rounded-tr-sm" 
+                : "bg-white border border-slate-200/80 text-slate-800 rounded-2xl rounded-tl-sm"
             )}>
-              <p className="flex items-start gap-2">
-                {msg.type === 'warning' && <AlertCircle className="text-orange-500 mt-0.5 flex-shrink-0" size={18} />}
-                {msg.type === 'error' && <AlertCircle className="text-red-500 mt-0.5 flex-shrink-0" size={18} />}
-                <span className={cn(
-                    msg.type === 'warning' ? 'text-orange-800' : '',
-                    msg.type === 'error' ? 'text-red-800' : ''
-                )}>
-                    {msg.content}
-                </span>
-              </p>
+              <div className="flex flex-col gap-1">
+                  <span className={cn(
+                      msg.type === 'warning' ? 'text-orange-800' : '',
+                      msg.type === 'error' ? 'text-red-800' : ''
+                  )}>
+                      {msg.content}
+                  </span>
+              </div>
               
               {/* Metadata / Order Details */}
               {msg.metadata && (msg.metadata.items || []).length > 0 && (
-                <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-100">
-                   <p className="font-semibold text-green-800 mb-1 flex items-center gap-1">
-                     <CheckCircle size={14} /> Order Confirmed
-                   </p>
-                   {msg.metadata.items.map((item, i) => (
-                     <div key={i} className="flex justify-between text-xs text-green-700">
-                        <span>{item.qty}x {item.name}</span>
-                        <span>-Stock Updated</span>
+                <div className="mt-4 p-4 bg-emerald-50/50 rounded-xl border border-emerald-100/50 w-full min-w-[240px]">
+                   <p className="font-bold text-emerald-800 mb-3 flex items-center gap-1.5 text-sm">
+                     <div className="w-5 h-5 bg-emerald-200 text-emerald-700 rounded-full flex items-center justify-center">
+                         <CheckCircle size={12} strokeWidth={3} />
                      </div>
-                   ))}
-                   <div className="mt-2 pt-2 border-t border-green-200 text-xs font-bold text-green-800">
-                     Total: ₹{msg.metadata.total_price}
+                     Order Confirmed
+                   </p>
+                   <div className="space-y-2">
+                       {msg.metadata.items.map((item, i) => (
+                         <div key={i} className="flex justify-between items-center text-sm">
+                            <span className="font-medium text-slate-700 flex items-center gap-2">
+                                <span className="text-slate-400 text-xs px-1.5 py-0.5 bg-white rounded border border-slate-200">{item.qty}x</span> 
+                                {item.name}
+                            </span>
+                            <CheckCheck size={14} className="text-emerald-500" />
+                         </div>
+                       ))}
+                   </div>
+                   <div className="mt-3 pt-3 border-t border-emerald-200/50 flex justify-between items-center">
+                       <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Amount</span>
+                       <span className="text-base font-black text-slate-900">₹{msg.metadata.total_price}</span>
                    </div>
                 </div>
               )}
 
               {/* Confirmation Buttons */}
               {msg.status === 'pending_confirmation' && idx === messages.length - 1 && (
-                  <div className="mt-3 flex gap-3">
+                  <div className="mt-4 flex flex-col sm:flex-row gap-2 w-full">
                       <button 
                           onClick={() => handleSendMessage('Yes')}
-                          className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-colors"
+                          className="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-emerald-500/20 active:scale-[0.98]"
                       >
-                          Yes
+                          Confirm Order
                       </button>
                       <button 
                           onClick={() => handleSendMessage('No')}
-                          className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors"
+                          className="flex-1 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-bold transition-all active:scale-[0.98]"
                       >
-                          No
+                          Cancel
                       </button>
                   </div>
               )}
             </div>
+            {/* Timestamp placeholder */}
+            <span className="text-[10px] text-slate-400 mt-1.5 px-1 font-medium">
+                {msg.role === 'user' ? 'Read' : 'Just now'}
+            </span>
           </div>
         ))}
+        
         {isLoading && (
-          <div className="flex gap-4">
-            <div className="w-10 h-10 rounded-full bg-emerald-600 flex items-center justify-center">
-               <Bot size={20} className="text-white" />
-            </div>
-            <div className="bg-white p-4 rounded-2xl rounded-tl-none border border-slate-200 shadow-sm flex items-center gap-2">
-               <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></span>
-               <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></span>
-               <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></span>
+          <div className="flex gap-3 max-w-[85%] animate-in fade-in duration-300">
+            <div className="bg-white px-5 py-4 rounded-2xl rounded-tl-sm border border-slate-200/80 shadow-sm flex items-center gap-1.5">
+               <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></span>
+               <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.15s'}}></span>
+               <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.3s'}}></span>
             </div>
           </div>
         )}
-        <div ref={messagesEndRef} />
+        <div ref={messagesEndRef} className="h-2" />
       </div>
 
       {/* Input Area */}
-      <div className="p-4 bg-white border-t border-slate-200">
-        <div className="flex gap-3 items-center">
+      <div className="p-4 bg-white/90 backdrop-blur-xl border-t border-slate-200/60 relative z-10 rounded-b-[2.5rem]">
+        <div className="flex gap-2 items-end max-w-4xl mx-auto">
+          
           <input
             type="file"
             id="rx-upload"
@@ -218,34 +240,45 @@ const ChatInterface = ({ userId = "GUEST_WEB" }) => {
               alert("Dr. Smith's Prescriptions uploaded! (Mock)");
             }}
           />
+          
           <button 
-            className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+            className="p-3.5 mb-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-2xl transition-all"
             title="Upload Prescription"
             onClick={() => document.getElementById('rx-upload').click()}
           >
-            <FileText size={24} />
+            <Paperclip size={22} className="rotate-45" />
           </button>
           
-          <div className="flex-1 bg-slate-100 rounded-full px-4 py-2 flex items-center border border-transparent focus-within:border-blue-300 focus-within:bg-white transition-all">
-            <input
-              type="text"
+          <div className="flex-1 bg-slate-100/80 rounded-3xl p-1.5 flex items-end border border-slate-200/60 focus-within:border-blue-400 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 transition-all shadow-inner">
+            <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-              placeholder="Type your order or use voice..."
-              className="flex-1 bg-transparent border-none outline-none text-slate-700 placeholder:text-slate-400"
+              onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                  }
+              }}
+              placeholder="Ask about medications or request refills..."
+              className="flex-1 bg-transparent border-none outline-none text-slate-700 placeholder:text-slate-400 min-h-[44px] max-h-[120px] py-3 px-4 resize-none text-[15px]"
+              rows={1}
             />
+            
+            <div className="p-1">
+               <VoiceChat onMessage={handleSendMessage} isProcessing={isLoading} />
+            </div>
           </div>
-
-          <VoiceChat onMessage={handleSendMessage} isProcessing={isLoading} />
           
           <button 
             onClick={() => handleSendMessage()}
             disabled={!input.trim() || isLoading}
-            className="p-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-full shadow-lg hover:shadow-xl transition-all"
+            className="p-4 mb-1 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-2xl shadow-lg hover:shadow-blue-600/30 transition-all flex-shrink-0 active:scale-95"
           >
-            <Send size={24} />
+            <Send size={20} className="ml-1" />
           </button>
+        </div>
+        <div className="text-center mt-2 pb-1">
+            <span className="text-[10px] text-slate-400 font-medium">AI can make mistakes. Check important information with your doctor.</span>
         </div>
       </div>
     </div>

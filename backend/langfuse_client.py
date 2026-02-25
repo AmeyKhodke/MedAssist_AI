@@ -1,12 +1,16 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 try:
     from langfuse import Langfuse
 except ImportError:
     Langfuse = None
 
 # Initialize Langfuse if key exists
-public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
-secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+public_key = os.environ.get("LANGFUSE_PUBLIC_KEY")
+secret_key = os.environ.get("LANGFUSE_SECRET_KEY")
 
 langfuse = None
 if public_key and secret_key and Langfuse:
@@ -16,7 +20,14 @@ if public_key and secret_key and Langfuse:
         host="https://cloud.langfuse.com"
     )
 
-def trace_interaction(name, input_data):
+def trace_interaction(name, input_data, user_id=None):
     if langfuse:
-        return langfuse.trace(name=name, input=input_data)
+        span = langfuse.start_span(name=name, input=input_data)
+        if user_id:
+            span.update_trace(user_id=user_id)
+        return span
     return None
+
+def flush():
+    if langfuse:
+        langfuse.flush()
