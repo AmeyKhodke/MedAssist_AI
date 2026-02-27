@@ -1,12 +1,20 @@
+import os
 import re
 import json
 from typing import Dict, List, Any, Optional
+from dotenv import load_dotenv
 from google import genai
 import database
 import langfuse_client
 
+# Load environment variables from .env file
+load_dotenv()
+
+# Get the API key from environment variables
+api_key = os.getenv("GOOGLE_API")
+
 # Configure the API key directly based on user's instruction
-client = genai.Client(api_key="AIzaSyDt1n_aXfDWgoNElXO8SLDJNwX3CW9lU6Y")
+client = genai.Client(api_key=api_key)
 
 def get_medicine_names() -> List[str]:
     conn = database.get_db_connection()
