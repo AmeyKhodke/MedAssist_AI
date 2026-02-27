@@ -108,8 +108,8 @@ const ClientDashboard = ({ user }) => {
           <button
             onClick={() => setActiveTab('chat')}
             className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 relative ${activeTab === 'chat'
-                ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-[1.02]'
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+              ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-[1.02]'
+              : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
               }`}
           >
             <MessageSquare size={18} className={activeTab === 'chat' ? 'text-blue-400' : ''} />
@@ -118,8 +118,8 @@ const ClientDashboard = ({ user }) => {
           <button
             onClick={() => setActiveTab('orders')}
             className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 relative ${activeTab === 'orders'
-                ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-[1.02]'
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+              ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-[1.02]'
+              : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
               }`}
           >
             <ShoppingBag size={18} className={activeTab === 'orders' ? 'text-blue-400' : ''} />
@@ -128,8 +128,8 @@ const ClientDashboard = ({ user }) => {
           <button
             onClick={() => setActiveTab('cart')}
             className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 relative ${activeTab === 'cart'
-                ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-[1.02]'
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+              ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-[1.02]'
+              : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
               }`}
           >
             <ShoppingCart size={18} className={activeTab === 'cart' ? 'text-blue-400' : ''} />
@@ -141,8 +141,8 @@ const ClientDashboard = ({ user }) => {
           <button
             onClick={() => setActiveTab('alerts')}
             className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 relative ${activeTab === 'alerts'
-                ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-[1.02]'
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+              ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-[1.02]'
+              : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
               }`}
           >
             <Bell size={18} className={activeTab === 'alerts' ? 'text-blue-400' : ''} />
@@ -292,7 +292,10 @@ const ClientDashboard = ({ user }) => {
 
                       <div className="flex flex-col sm:flex-row gap-3">
                         <button
-                          onClick={checkoutCart}
+                          onClick={() => {
+                            checkoutCart();
+                            window.open('https://www.upilinks.in/payment-link/upi1175539430', '_blank');
+                          }}
                           className="flex-1 py-4 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-2xl font-bold transition-all shadow-lg shadow-emerald-500/25 active:scale-[0.98] flex items-center justify-center gap-2 text-base"
                         >
                           <CheckCircle size={20} /> Secure Checkout

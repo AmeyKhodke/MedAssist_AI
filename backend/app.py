@@ -1,4 +1,8 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, File, UploadFile, Form
+from fastapi.staticfiles import StaticFiles
+import os
+import shutil
+import uuid
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -20,6 +24,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+UPLOAD_DIR = "static/uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.on_event("startup")
 def startup_event():
@@ -83,6 +91,77 @@ def fulfill_webhook(payload: dict):
 # --- PHASE 2: AGENT ENDPOINTS ---
 import agents
 
+@app.post("/agent/upload_prescription")
+async def upload_prescription(user_id: str = Form(...), file: UploadFile = File(...)):
+    # Save the file
+    ext = os.path.splitext(file.filename)[1]
+    filename = f"{uuid.uuid4()}{ext}"
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    file_url = f"http://localhost:8000/static/uploads/{filename}"
+    
+    # Process with Gemini
+    with open(file_path, "rb") as f:
+        file_bytes = f.read()
+        
+    mime_type = file.content_type or "image/jpeg"
+    extraction = agents.extract_from_image(file_bytes, mime_type)
+    
+    added_meds = []
+    unrecognized = []
+    conn = database.get_db_connection()
+    for med in extraction.get("medicines", []):
+        name = med["name"]
+        qty = med["qty"]
+        
+        # Verify it exists in DB (Exact match first)
+        r = conn.execute("SELECT name, unit_price FROM medicines WHERE name = ?", (name,)).fetchone()
+        if not r:
+            # Fallback to LIKE match
+            r = conn.execute("SELECT name, unit_price FROM medicines WHERE name LIKE ?", (f"%{name}%",)).fetchone()
+            
+        if r:
+            exact_name = r['name']
+            price = r['unit_price'] * qty
+            # Add to cart as prescribed
+            database.add_to_cart(user_id, exact_name, qty, price, is_prescribed=True)
+            added_meds.append(f"{qty}x {exact_name}")
+        else:
+            unrecognized.append(name)
+            
+    conn.close()
+    
+    # Store the prescription itself in the admin dashboard immediately
+    med_summary_parts = []
+    if added_meds:
+        med_summary_parts.append(", ".join(added_meds))
+    if unrecognized:
+        med_summary_parts.append(f"(Unrecognized: {', '.join(unrecognized)})")
+    if extraction.get("suggestions"):
+        med_summary_parts.append(f"(Suggestions: {', '.join(extraction['suggestions'])})")
+        
+    final_summary = " ".join(med_summary_parts) if med_summary_parts else "No medications recognized."
+    
+    # Send it to admin as 'uploaded'
+    database.create_prescription_approval(user_id, final_summary, file_url, status="uploaded")
+    
+    # Chat response
+    resp = f"Prescription uploaded successfully. Extracted and added {', '.join(added_meds) if added_meds else 'no recognized medicines'} to your cart as prescribed."
+    if unrecognized or extraction.get("suggestions"):
+        resp += " Some items were not found in our inventory."
+    
+    database.save_chat_message(user_id, "assistant", resp)
+    langfuse_client.flush()
+    
+    return {
+        "result": resp,
+        "prescription_url": file_url,
+        "added_meds": added_meds
+    }
+
 class ChatRequest(BaseModel):
     text: str
     user_id: Optional[str] = "GUEST"
@@ -111,35 +190,67 @@ def agent_chat_process(request: ChatRequest):
              database.save_chat_message(user_id, "assistant", resp)
              return {"result": resp}
         
-        # Prepare payload for safety and execution
-        # cart_items has 'medicine' and 'quantity' instead of 'name' and 'qty'
-        formatted_meds = [{"name": item['medicine'], "qty": item['quantity']} for item in cart_items]
+        conn = database.get_db_connection()
+        pending_approval_meds = []
+        approved_meds = []
         
-        extraction = {
-            "medicines": formatted_meds,
-            "prescription_verified": request.prescription_verified
-        }
+        for item in cart_items:
+            med = item['medicine']
+            qty = item['quantity']
+            is_prescribed = item['is_prescribed']
+            
+            r = conn.execute("SELECT prescription_required FROM medicines WHERE name = ?", (med,)).fetchone()
+            req_rx = r['prescription_required'] if r else False
+            
+            if req_rx and not is_prescribed:
+                # Needs admin approval
+                # Try to find a recent prescription URL for this user
+                past_rx = conn.execute("SELECT prescription_url FROM prescription_approvals WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user_id,)).fetchone()
+                rx_url = past_rx['prescription_url'] if past_rx else ""
+                
+                # Check if it was already approved
+                if database.check_approved_prescription(user_id, med):
+                     approved_meds.append({"name": med, "qty": qty})
+                else:
+                    database.create_prescription_approval(user_id, med, rx_url)
+                    pending_approval_meds.append(f"{qty}x {med}")
+            else:
+                approved_meds.append({"name": med, "qty": qty})
+                
+        conn.close()
         
-        safety = agents.safety.run(extraction, user_id=user_id)
+        # We process approved meds if any
+        resp_parts = []
+        execution_data = None
         
-        if not safety["approved"]:
-             resp = f"Safety check failed: {safety['reason']}"
-             database.save_chat_message(user_id, "assistant", resp)
-             return {"result": resp, "status": safety.get("status", "rejected")}
-             
-        execution = agents.executor.run(safety, user_id=user_id)
-        if execution["status"] == "success":
-            database.clear_cart(user_id) # Empty cart after success
-            med_names = ", ".join([m['name'] for m in safety['medicines']])
-            resp = f"Order Placed successfully! {med_names}. Total: ₹{execution['total_price']:.2f}"
-            database.save_chat_message(user_id, "assistant", resp)
-            langfuse_client.flush()
-            return {"result": resp, "data": execution}
-        else:
-            resp = f"Order failed: {execution.get('error')}"
-            database.save_chat_message(user_id, "assistant", resp)
-            langfuse_client.flush()
-            return {"result": resp, "error": execution.get("error")}
+        if approved_meds:
+            extraction = {
+                "medicines": approved_meds,
+                "prescription_verified": True
+            }
+            safety = agents.safety.run(extraction, user_id=user_id)
+            if not safety["approved"]:
+                resp_parts.append(f"Safety check failed for some items: {safety['reason']}.")
+            else:
+                execution = agents.executor.run(safety, user_id=user_id)
+                if execution["status"] == "success":
+                    med_names = ", ".join([m['name'] for m in safety['medicines']])
+                    resp_parts.append(f"Order Placed successfully for {med_names}. Total: ₹{execution['total_price']:.2f}.")
+                    execution_data = execution
+                else:
+                    resp_parts.append(f"Order failed: {execution.get('error')}.")
+                    
+        if pending_approval_meds:
+            pending_str = ", ".join(pending_approval_meds)
+            resp_parts.append(f"Medicines requiring a prescription ({pending_str}) have been sent to the admin for approval.")
+            
+        resp = " ".join(resp_parts)
+        database.clear_cart(user_id)
+        database.save_chat_message(user_id, "assistant", resp)
+        langfuse_client.flush()
+        
+        status = "success" if execution_data else "pending_admin" if pending_approval_meds else "rejected"
+        return {"result": resp, "status": status, "data": execution_data}
 
     # --- SHOW CART LOGIC ---
     if text.lower() in ["show cart", "view cart", "my cart", "show my cart", "cart"]:

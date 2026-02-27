@@ -86,15 +86,15 @@ export default function PrescriptionsView() {
               <tr key={req.id} className="hover:bg-slate-50 transition-colors">
                 <td className="px-6 py-4 font-mono text-indigo-600 font-medium">RX-{req.id + 8840}</td>
                 <td className="px-6 py-4 text-slate-500">{new Date(req.timestamp).toLocaleDateString()}</td>
-                <td className="px-6 py-4 font-medium text-slate-800">Patient {req.user_id.substring(0,8)}</td>
+                <td className="px-6 py-4 font-medium text-slate-800">Patient {req.user_id.substring(0, 8)}</td>
                 <td className="px-6 py-4 text-slate-600">Autosigned / Dr. AI</td>
                 <td className="px-6 py-4">{req.medicine}</td>
                 <td className="px-6 py-4">
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-semibold flex inline-flex items-center space-x-1 ${
-                    req.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
-                    req.status === 'pending' ? 'bg-amber-100 text-amber-700' :
-                    'bg-rose-100 text-rose-700'
-                  }`}>
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-semibold flex inline-flex items-center space-x-1 ${req.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
+                      req.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                        req.status === 'uploaded' ? 'bg-blue-100 text-blue-700' :
+                          'bg-rose-100 text-rose-700'
+                    }`}>
                     {req.status === 'approved' && <CheckCircle2 size={12} />}
                     {req.status === 'pending' && <Clock size={12} />}
                     {req.status === 'rejected' && <XCircle size={12} />}
@@ -102,9 +102,9 @@ export default function PrescriptionsView() {
                   </span>
                 </td>
                 <td className="px-6 py-4 text-right">
-                  <button className="inline-flex items-center text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors">
-                    <Eye size={16} className="mr-1.5"/> View PDF
-                  </button>
+                  <a href={req.prescription_url || "#"} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors">
+                    <Eye size={16} className="mr-1.5" /> View File
+                  </a>
                 </td>
               </tr>
             ))}

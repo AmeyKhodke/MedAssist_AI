@@ -117,6 +117,52 @@ const ChatInterface = ({ userId = "GUEST_WEB" }) => {
     }
   };
 
+  const handleFileUpload = async (file) => {
+    setIsLoading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('user_id', userId);
+
+    try {
+      setMessages(prev => [...prev, {
+        role: 'user',
+        content: `Uploading prescription: ${file.name}...`,
+        type: 'text'
+      }]);
+
+      const response = await axios.post('http://localhost:8000/agent/upload_prescription', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      const result = response.data;
+      setRxVerified(true);
+
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: result.result,
+        type: 'success',
+      }]);
+
+      // Also refresh cart if needed
+      fetchCart();
+
+    } catch (error) {
+      console.error(error);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: "Sorry, I encountered an error uploading your prescription.",
+        type: 'error'
+      }]);
+    } finally {
+      setIsLoading(false);
+      // clear the input
+      const fileInput = document.getElementById('rx-upload');
+      if (fileInput) fileInput.value = '';
+    }
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-12rem)] md:h-[600px] w-full bg-slate-50/50 rounded-[2.5rem] shadow-xl overflow-hidden border border-slate-200/60 relative">
 
@@ -377,10 +423,12 @@ const ChatInterface = ({ userId = "GUEST_WEB" }) => {
             <input
               type="file"
               id="rx-upload"
+              accept="image/*"
               className="hidden"
-              onChange={() => {
-                setRxVerified(true);
-                alert("Dr. Smith's Prescriptions uploaded! (Mock)");
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  handleFileUpload(e.target.files[0]);
+                }
               }}
             />
 

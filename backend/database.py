@@ -102,9 +102,17 @@ def init_db():
             medicine TEXT,
             quantity INTEGER,
             price REAL,
+            is_prescribed BOOLEAN DEFAULT 0,
             added_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    
+    # Add column if it doesn't exist (for existing SQLite databases)
+    try:
+        c.execute("ALTER TABLE cart_items ADD COLUMN is_prescribed BOOLEAN DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
     
     conn.commit()
     conn.close()
@@ -428,18 +436,19 @@ def get_orders_by_user(user_id: str):
     conn.close()
     return [dict(row) for row in orders]
 
-def add_to_cart(user_id: str, medicine: str, quantity: int, price: float):
+def add_to_cart(user_id: str, medicine: str, quantity: int, price: float, is_prescribed: bool = False):
     conn = get_db_connection()
     # Check if exists, update qty if does
-    cur = conn.execute('SELECT quantity FROM cart_items WHERE user_id = ? AND medicine = ?', (user_id, medicine))
+    cur = conn.execute('SELECT quantity, is_prescribed FROM cart_items WHERE user_id = ? AND medicine = ?', (user_id, medicine))
     row = cur.fetchone()
     if row:
         new_qty = row['quantity'] + quantity
-        conn.execute('UPDATE cart_items SET quantity = ?, price = ? WHERE user_id = ? AND medicine = ?', 
-                     (new_qty, price * new_qty / quantity if quantity else price, user_id, medicine))
+        new_is_prescribed = row['is_prescribed'] or is_prescribed
+        conn.execute('UPDATE cart_items SET quantity = ?, price = ?, is_prescribed = ? WHERE user_id = ? AND medicine = ?', 
+                     (new_qty, price * new_qty / quantity if quantity else price, new_is_prescribed, user_id, medicine))
     else:
-        conn.execute('INSERT INTO cart_items (user_id, medicine, quantity, price) VALUES (?, ?, ?, ?)',
-                     (user_id, medicine, quantity, price))
+        conn.execute('INSERT INTO cart_items (user_id, medicine, quantity, price, is_prescribed) VALUES (?, ?, ?, ?, ?)',
+                     (user_id, medicine, quantity, price, is_prescribed))
     conn.commit()
     conn.close()
 
@@ -467,9 +476,9 @@ def get_notifications(user_id: str):
     conn.close()
     return [dict(row) for row in notifs]
 
-def create_prescription_approval(user_id: str, medicine: str, prescription_url: str):
+def create_prescription_approval(user_id: str, medicine: str, prescription_url: str, status: str = 'pending'):
     conn = get_db_connection()
-    conn.execute('INSERT INTO prescription_approvals (user_id, medicine, prescription_url) VALUES (?, ?, ?)', (user_id, medicine, prescription_url))
+    conn.execute('INSERT INTO prescription_approvals (user_id, medicine, prescription_url, status) VALUES (?, ?, ?, ?)', (user_id, medicine, prescription_url, status))
     conn.commit()
     conn.close()
 
