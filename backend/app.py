@@ -277,3 +277,41 @@ def update_admin_approval(approval_id: int, update: ApprovalStatusUpdate):
     database.create_notification(approval['user_id'], msg)
     
     return {"status": "success", "approval_id": approval_id, "new_status": update.status}
+
+# --- PHASE 3: ADMIN DASHBOARD ANALYTICS ENDPOINTS ---
+
+@app.get("/api/dashboard/summary")
+def api_dashboard_summary():
+    return database.get_dashboard_summary()
+
+@app.get("/api/sales/analytics")
+def api_sales_analytics():
+    return database.get_sales_analytics()
+
+@app.get("/api/inventory")
+def api_inventory():
+    return database.get_inventory_analytics()
+
+@app.get("/api/refill/predictions")
+def api_refill_predictions():
+    alerts = agents.proactive.run_scan()
+    mapped_alerts = []
+    for a in alerts:
+        mapped_alerts.append({
+            "patient_id": a.get("user_id"),
+            "medicine": a.get("medicine"),
+            "predicted_refill_date": "Due Now" if a.get("days_since_purchase", 0) > 25 else "Upcoming",
+            "confidence_score": min(99, 85 + a.get("days_since_purchase", 0)),
+            "risk_indicator": "High" if a.get("days_since_purchase", 0) > 30 else "Medium"
+        })
+    # Sort by highest urgency
+    mapped_alerts.sort(key=lambda x: x['confidence_score'], reverse=True)
+    return mapped_alerts
+
+@app.get("/api/approvals")
+def api_approvals():
+    return database.get_pending_approvals()
+
+@app.post("/api/approvals/{approval_id}")
+def api_update_approval(approval_id: int, update: ApprovalStatusUpdate):
+    return update_admin_approval(approval_id, update)

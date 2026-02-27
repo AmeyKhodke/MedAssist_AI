@@ -297,6 +297,85 @@ def get_all_medicines():
     conn.close()
     return [dict(row) for row in medicines]
 
+def get_dashboard_summary():
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM medicines")
+    total_medicines = c.fetchone()[0]
+
+    c.execute("SELECT COUNT(*) FROM medicines WHERE stock < 50")
+    low_stock_count = c.fetchone()[0]
+
+    c.execute("SELECT date(MAX(timestamp)) FROM orders")
+    max_date = c.fetchone()[0]
+
+    if max_date:
+        c.execute("SELECT SUM(total_price) FROM orders WHERE date(timestamp) = ?", (max_date,))
+        today_revenue = c.fetchone()[0] or 0.0
+
+        current_month = max_date[:7]
+        q = '''
+            SELECT SUM(o.total_price - (m.unit_price * 0.6 * o.quantity))
+            FROM orders o
+            JOIN medicines m ON o.medicine = m.name
+            WHERE strftime('%Y-%m', o.timestamp) = ?
+        '''
+        c.execute(q, (current_month,))
+        monthly_profit = c.fetchone()[0] or 0.0
+    else:
+        today_revenue = 0.0
+        monthly_profit = 0.0
+
+    conn.close()
+    return {
+        "total_medicines": total_medicines,
+        "low_stock_count": low_stock_count,
+        "today_revenue": round(today_revenue, 2),
+        "monthly_profit": round(monthly_profit, 2)
+    }
+
+def get_sales_analytics():
+    conn = get_db_connection()
+    query = '''
+        SELECT 
+            date(o.timestamp) as order_date,
+            SUM(o.total_price) as total_sales,
+            SUM(o.total_price - (m.unit_price * 0.6 * o.quantity)) as total_profit
+        FROM orders o
+        JOIN medicines m ON o.medicine = m.name
+        GROUP BY order_date
+        ORDER BY order_date ASC
+        LIMIT 30
+    '''
+    rows = conn.execute(query).fetchall()
+    conn.close()
+    return [{"order_date": r["order_date"], "total_sales": round(r["total_sales"], 2), "total_profit": round(r["total_profit"], 2)} for r in rows]
+
+def get_inventory_analytics():
+    conn = get_db_connection()
+    rows = conn.execute("SELECT * FROM medicines").fetchall()
+    conn.close()
+    
+    inventory = []
+    for row in rows:
+        med = dict(row)
+        med['reorder_threshold'] = 50
+        med['procurement_cost'] = round(med['unit_price'] * 0.6, 2)
+        if med['unit_price'] > 0:
+            med['profit_margin'] = round(((med['unit_price'] - med['procurement_cost']) / med['unit_price']) * 100, 2)
+        else:
+            med['profit_margin'] = 0.0
+            
+        if med['stock'] == 0:
+            med['status'] = 'Out of Stock'
+        elif med['stock'] < med['reorder_threshold']:
+            med['status'] = 'Low Stock'
+        else:
+            med['status'] = 'In Stock'
+            
+        inventory.append(med)
+    return inventory
+
 def update_stock(medicine_name: str, deduct_qty: int):
     conn = get_db_connection()
     # Check current stock
