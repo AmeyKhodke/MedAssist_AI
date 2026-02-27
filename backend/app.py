@@ -167,8 +167,14 @@ def agent_chat_process(request: ChatRequest):
 
     # --- NORMAL ORDER FLOW ---
     # 1. Extract Order
+    # 1. Extract Order
     extraction = agents.extractor.run(text, user_id=user_id)
     if not extraction["medicines"]:
+        if extraction.get("error") == "gemini_rate_limit":
+             resp = "Ah! I'm sorry, but my AI NLP Service has hit its Free API Rate Limit with Google Gemini. Please try again in an hour!"
+             database.save_chat_message(user_id, "assistant", resp)
+             return {"result": resp}
+             
         # Check for suggestions
         suggestions = extraction.get("suggestions", [])
         if suggestions:

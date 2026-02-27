@@ -1,22 +1,29 @@
 import re
-from typing import Dict, List, Any
+import json
+from typing import Dict, List, Any, Optional
+from google import genai
 import database
 import langfuse_client
+
+# Configure the API key directly based on user's instruction
+client = genai.Client(api_key="AIzaSyDt1n_aXfDWgoNElXO8SLDJNwX3CW9lU6Y")
 
 def get_medicine_names() -> List[str]:
     conn = database.get_db_connection()
     meds = conn.execute("SELECT name FROM medicines").fetchall()
     conn.close()
-    return [m['name'].lower() for m in meds]
+    return [m['name'] for m in meds]
 
 class OrderExtractorAgent:
     def __init__(self):
-        self._medicine_names = None
+        self._medicine_names: Optional[List[str]] = None
+        # Use flash model for fast NLP extraction
+        self.client = client
+        self.model_name = 'gemini-2.5-flash'
 
     @property
     def medicine_names(self):
         if self._medicine_names is None:
-            # Check if table exists first to avoid crash during early init
             try:
                 self._medicine_names = get_medicine_names()
             except:
@@ -27,72 +34,69 @@ class OrderExtractorAgent:
         # Langfuse trace
         trace = langfuse_client.trace_interaction("OrderExtractor", text, user_id=user_id)
         
-        # Ensure names are loaded (now that DB should be ready)
         if not self.medicine_names:
-             try:
+            try:
                 self._medicine_names = get_medicine_names()
-             except:
+            except:
                 pass
-        
-        # Simple heuristic/regex extraction for demo stability
-        # "20 metformin" -> qty=20, name=metformin
-        # Improve this with LLM if available
-        
-        found_meds = []
-        text_lower = text.lower()
-        
-        for med in self.medicine_names:
-            if med in text_lower:
-                # Look for number before "med" or generic number in string
-                # Regex for "20 med" or "med 20"
-                qty = 1 # Default
-                
-                # Check for "X <med>" pattern
-                match_prev = re.search(r'(\d+)\s+(?:mg\s+)?' + re.escape(med), text_lower)
-                if match_prev:
-                    qty = int(match_prev.group(1))
-                else:
-                    # Check for "<med> X" pattern
-                    pattern_next = re.escape(med) + r'\s+(?:mg\s+)?(\d+)'
-                    match_next = re.search(pattern_next, text_lower)
-                    
-                    if match_next:
-                         val = int(match_next.group(1))
-                         if val < 10: # Simple heuristic: < 10 is likely quantity. > 10 might be mg.
-                             qty = val
-                    
-                    # More explicit intent: "2 x Ramipril"
-                    match_x = re.search(r'(\d+)\s*x\s*' + re.escape(med), text_lower)
-                    if match_x:
-                        qty = int(match_x.group(1))
 
-                # Capitalize correctly
-                med_proper = next((m['name'] for m in database.get_all_medicines() if m['name'].lower() == med), med.capitalize())
-                
-                found_meds.append({
-                    "name": med_proper,
-                    "qty": qty
-                })
+        valid_meds_list = ", ".join(self.medicine_names)
+
+        # Prompt engineering to handle "messy" NLP
+        prompt = f"""
+        You are an intelligent pharmacy extraction engine. 
+        Your task is to parse a user's conversational, informal, and messy text and identify if they are trying to order any medical items and what the quantity is.
+        The user might type in messy, unprofessional language (e.g., "i got a bad headache give me 2 packs of aspirins").
+
+        CRITICAL INSTRUCTIONS: 
+        1. You MUST map the user's intent to the closest exact medicine names from our inventory list ONLY.
+        2. Handle plurals and typos gracefully (e.g., "aspirins" -> "Aspirin", "para" -> "Paracetamol", "advils" -> "Advil").
+        3. If the user mentions an item, YOU MUST extract it into the 'medicines' array if it resembles our inventory.
+        4. If it's completely unclear or not in inventory, provide the closest match in 'suggestions'.
         
-        result = {"medicines": found_meds, "user_id": None, "suggestions": []}
+        Our Current Inventory: 
+        {valid_meds_list}
         
-        # If no medicines found, try to find suggestions
-        if not found_meds:
-            # Remove common stop words
-            stop_words = {"i", "need", "want", "order", "buy", "please", "some", "a", "an", "the", "hi", "hello", "medicine", "medication", "product", "confirm"}
-            words = [w for w in re.split(r'\W+', text_lower) if w and w not in stop_words and len(w) > 2]
+        User Text: "{text}"
+
+        Return ONLY a raw JSON object with the following exact schema, do not include markdown blocks. Do not return any other conversational text:
+        {{
+            "medicines": [
+                {{
+                    "name": "Exact Name From Inventory String",
+                    "qty": integer_quantity
+                }}
+            ],
+            "suggestions": ["list", "of", "similar", "medicines", "if", "not", "found"]
+        }}
+        """
+
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+            )
+            # Defensive JSON parsing
+            raw_text = response.text.strip()
+            if raw_text.startswith("```json"):
+                raw_text = raw_text[7:]
+            if raw_text.endswith("```"):
+                raw_text = raw_text[:-3]
             
-            potential_matches = []
-            for word in words:
-                for med in self.medicine_names:
-                    if word in med:
-                        med_proper = next((m['name'] for m in database.get_all_medicines() if m['name'].lower() == med), med.capitalize())
-                        if med_proper not in potential_matches:
-                            potential_matches.append(med_proper)
-                        if len(potential_matches) >= 5: break # Limit
-                if len(potential_matches) >= 5: break
+            extracted_data = json.loads(raw_text.strip())
             
-            result["suggestions"] = potential_matches
+            result = {
+                "medicines": extracted_data.get("medicines", []),
+                "suggestions": extracted_data.get("suggestions", []),
+                "user_id": user_id
+            }
+        except Exception as e:
+            err_str = str(e).lower()
+            print(f"Gemini Extraction Failed: {err_str}")
+            if "429" in err_str or "exhausted" in err_str:
+                result = {"medicines": [], "suggestions": [], "user_id": user_id, "error": "gemini_rate_limit"}
+            else:
+                result = {"medicines": [], "suggestions": [], "user_id": user_id}
 
         # Update trace
         if trace:
