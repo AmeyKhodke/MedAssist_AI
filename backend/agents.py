@@ -162,7 +162,8 @@ class SafetyCheckerAgent:
                 return result
             
             # Prescription Check
-            if row['prescription_required']:
+            # Enforce if explicit flag is True (covers ® meds via DB migration) OR unicode '®' check as a fallback
+            if row['prescription_required'] or '\u00ae' in med_name:
                 # 1. Does the user already have an active approval?
                 is_approved = database.check_approved_prescription(user_id, med_name)
                 if is_approved:

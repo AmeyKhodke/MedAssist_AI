@@ -39,7 +39,6 @@ export default function ObservabilityPanel() {
             <span>Full Logs</span>
           </button>
         </div>
-<<<<<<< Updated upstream
         <a 
           href="https://cloud.langfuse.com/project/cmlwf7thh00d4ad07x314oujq/traces"
           target="_blank"
@@ -49,8 +48,6 @@ export default function ObservabilityPanel() {
           <Code2 size={14} />
           <span>View Full Trace Logs</span>
         </a>
-=======
->>>>>>> Stashed changes
       </div>
 
       <div className="flex overflow-x-auto hide-scrollbar p-3 space-x-3 bg-slate-900/50">
