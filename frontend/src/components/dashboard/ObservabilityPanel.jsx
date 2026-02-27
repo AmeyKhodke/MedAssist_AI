@@ -9,10 +9,15 @@ export default function ObservabilityPanel() {
           <Terminal size={20} />
           <h2 className="text-lg font-bold text-white tracking-wide">Agent Observability Preview</h2>
         </div>
-        <button className="flex items-center space-x-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-md transition-colors border border-slate-700">
+        <a 
+          href="https://cloud.langfuse.com/project/cmlwf7thh00d4ad07x314oujq/traces"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center space-x-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-md transition-colors border border-slate-700"
+        >
           <Code2 size={14} />
           <span>View Full Trace Logs</span>
-        </button>
+        </a>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
