@@ -1,6 +1,7 @@
 from datetime import datetime
 import database
 import langfuse_client
+import email_service
 
 class InventoryExecutorAgent:
     def run(self, approved_order, user_id="GUEST"):
@@ -38,6 +39,19 @@ class InventoryExecutorAgent:
                 "total_price": total_price,
                 "items": dispatched_items
             }
+            
+            # --- EMAIL NOTIFICATION HOOK ---
+            # Using try/except so email failures don't crash the order
+            try:
+                email_service.notify_order_success(
+                    user_id=user_id, 
+                    order_id=result["order_id"], 
+                    total_price=total_price, 
+                    items=dispatched_items
+                )
+            except Exception as e:
+                print(f"Non-fatal error sending order confirmation email: {e}")
+            
             if trace:
                  trace.update(output=result)
                  trace.end()

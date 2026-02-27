@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 import database
 import langfuse_client
+import email_service
 
 class ProactiveRefillAgent:
     def run_scan(self, user_id="ADMIN"):
@@ -58,6 +59,18 @@ class ProactiveRefillAgent:
                     "days_remaining": days_until_refill,
                     "message": msg
                 })
+                
+                # --- EMAIL NOTIFICATION HOOK ---
+                # Using try/except so email failures don't crash the scan loop
+                try:
+                    email_service.notify_proactive_refill(
+                        user_id=cust['user_id'],
+                        user_name=cust['name'],
+                        medicine=cust['medicine'],
+                        days_remaining=days_until_refill
+                    )
+                except Exception as e:
+                    print(f"Non-fatal error sending proactive email: {e}")
         
         conn.close()
         if trace:
