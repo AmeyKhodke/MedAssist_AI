@@ -21,6 +21,10 @@ function App() {
     return <LoginPage onLogin={handleLogin} />;
   }
 
+  if (user.role === 'admin') {
+    return <AdminDashboard setRole={handleLogout} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
       {/* Navigation Bar */}
@@ -60,11 +64,7 @@ function App() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {user.role === 'admin' ? (
-          <AdminDashboard />
-        ) : (
-          <ClientDashboard user={user} />
-        )}
+        <ClientDashboard user={user} />
       </main>
     </div>
   );

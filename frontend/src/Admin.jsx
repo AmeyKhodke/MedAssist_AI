@@ -10,7 +10,6 @@ import SalesChart from './components/dashboard/SalesChart';
 import InventoryCharts from './components/dashboard/InventoryCharts';
 import InventoryTable from './components/dashboard/InventoryTable';
 import RefillPanel from './components/dashboard/RefillPanel';
-import ApprovalPanel from './components/dashboard/ApprovalPanel';
 import ObservabilityPanel from './components/dashboard/ObservabilityPanel';
 
 // Full Page Views (Mockups for Navigation)
@@ -29,13 +28,13 @@ export default function AdminDashboard({ setRole }) {
       <Sidebar setRole={setRole} activeView={activeView} setActiveView={setActiveView} />
       
       {/* Main Content Area */}
-      <div className="flex-1 ml-64 flex flex-col relative h-screen overflow-y-auto">
+      <div className="flex-1 md:ml-64 flex flex-col relative h-screen overflow-y-auto">
         {/* Fixed Topbar */}
         <Topbar />
         
         {/* Scrollable Main Content */}
-        <main className="flex-1 mt-16 p-8">
-          <div className="max-w-[1600px] mx-auto">
+        <main className="flex-1 mt-16 p-4 md:p-8 w-full">
+          <div className="w-full">
             {activeView === 'dashboard' ? (
               <>
                 {/* Header Title */}
@@ -47,23 +46,22 @@ export default function AdminDashboard({ setRole }) {
                   Real-time analytics, inventory management, and proactive intelligence network overview.
                 </p>
 
-                {/* Row 1: KPI Cards */}
+                {/* Top Row: Stat Cards */}
                 <DashboardSummary />
-                
-                {/* Row 2: Analytics (12-Col Grid) */}
+
+                {/* Middle Analytics Row */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
                   <SalesChart />
                   <InventoryCharts />
                 </div>
 
-                {/* Row 3: Operational Intelligence (12-Col Grid) */}
-                <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 pb-8">
+                {/* Data & Prediction Row */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pb-6">
                   <InventoryTable />
                   <RefillPanel />
-                  <ApprovalPanel />
                 </div>
 
-                {/* Row 4: Observability Preview */}
+                {/* Footer: Observability Trace Log */}
                 <ObservabilityPanel />
               </>
             ) : activeView === 'inventory' ? (

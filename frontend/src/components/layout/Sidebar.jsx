@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Users, Package, Settings, LogOut, FileText, Bell, Activity } from 'lucide-react';
+import { LayoutDashboard, Users, Package, Settings, LogOut, FileText, Activity, Terminal } from 'lucide-react';
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -15,19 +15,20 @@ export default function Sidebar({ setRole, activeView, setActiveView }) {
   const navItems = [
     { id: 'dashboard', icon: <LayoutDashboard size={20} />, label: "Dashboard" },
     { id: 'inventory', icon: <Package size={20} />, label: "Inventory" },
+    { id: 'predictions', icon: <Activity size={20} />, label: "Predictions" },
     { id: 'prescriptions', icon: <FileText size={20} />, label: "Prescriptions" },
     { id: 'patients', icon: <Users size={20} />, label: "Patients" }
   ];
 
   const systemItems = [
-    { id: 'alerts', icon: <Bell size={20} />, label: "Alerts & AI Insights" },
+    { id: 'observability', icon: <Terminal size={20} />, label: "Observability" },
     { id: 'settings', icon: <Settings size={20} />, label: "Settings" }
   ];
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-64 bg-slate-900 text-white flex flex-col items-start px-4 py-6 border-r border-slate-800 shadow-xl z-50">
+    <aside className="hidden md:flex fixed left-0 top-0 h-screen w-64 bg-[#0F172A] text-white flex-col items-start px-4 py-6 border-r border-[#1e293b] shadow-xl z-50">
       <div className="w-full mb-8 px-2 flex items-center space-x-3">
-        <div className="w-10 h-10 bg-indigo-500 rounded-lg flex items-center justify-center flex-shrink-0 shadow-lg shadow-indigo-500/20">
+        <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-lg shadow-indigo-600/20">
           <Activity className="w-6 h-6 text-white" />
         </div>
         <div>
@@ -81,7 +82,7 @@ function SidebarItem({ icon, label, active = false, onClick }) {
         "w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all duration-200 group text-sm font-medium",
         active 
           ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/20" 
-          : "text-slate-400 hover:bg-slate-800 hover:text-white"
+          : "text-slate-400 hover:bg-[#1e293b] hover:text-white"
       )}>
       <span className={cn(
         "transition-colors",

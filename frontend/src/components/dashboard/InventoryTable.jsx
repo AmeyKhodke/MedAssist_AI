@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { ShieldCheck, Info } from 'lucide-react';
+import { ShieldCheck, Info, Search } from 'lucide-react';
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -11,6 +11,7 @@ function cn(...inputs) {
 export default function InventoryTable() {
   const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     fetchInventory();
@@ -29,67 +30,80 @@ export default function InventoryTable() {
 
   if (loading) return <div className="h-64 bg-slate-100 animate-pulse rounded-2xl w-full"></div>;
 
+  const filteredInventory = inventory.filter(item => 
+    item.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col col-span-1 lg:col-span-6 h-96">
-      <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-white z-10 sticky top-0">
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col col-span-1 lg:col-span-8 h-96">
+      <div className="px-6 py-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white z-10 sticky top-0 gap-4">
         <div>
-          <h2 className="text-lg font-bold text-slate-800">Inventory Status</h2>
+          <h2 className="text-lg font-bold text-slate-800">Medicine Inventory</h2>
           <p className="text-sm text-slate-500">Live monitoring of {inventory.length} SKUs</p>
+        </div>
+        <div className="relative w-full sm:w-64">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <Search size={16} className="text-slate-400" />
+          </div>
+          <input
+            type="text"
+            className="bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-10 p-2 transition-colors outline-none"
+            placeholder="Search medications..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
         </div>
       </div>
       
-      <div className="overflow-y-auto flex-1 p-0">
+      <div className="overflow-y-auto flex-1 p-0 hide-scrollbar">
         <table className="w-full text-left text-sm text-slate-600">
-          <thead className="bg-slate-50/50 text-xs uppercase font-semibold text-slate-500 sticky top-0 z-10 backdrop-blur-sm">
+          <thead className="bg-[#F8FAFC] text-xs uppercase font-semibold text-slate-500 sticky top-0 z-10">
             <tr>
-              <th className="px-6 py-4">Medicine Name</th>
-              <th className="px-6 py-4">Stock</th>
+              <th className="px-6 py-4">Medication Name</th>
               <th className="px-6 py-4">Status</th>
-              <th className="px-6 py-4">Margin %</th>
+              <th className="px-6 py-4 text-right">Quantity</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {inventory.map((item, idx) => (
-              <tr key={idx} className="hover:bg-slate-50 transition-colors group">
-                <td className="px-6 py-4">
-                  <div className="flex items-center">
-                    <div className="font-medium text-slate-800 line-clamp-2 max-w-[200px]" title={item.name}>
-                      {item.name}
+            {filteredInventory.map((item, idx) => {
+              let statusColor = "bg-rose-100 text-rose-700 border-rose-200"; // Out of Stock default
+              let dotColor = "bg-rose-500";
+              
+              if (item.status === 'In Stock') {
+                statusColor = "bg-emerald-100 text-emerald-700 border-emerald-200";
+                dotColor = "bg-emerald-500";
+              } else if (item.status === 'Low Stock' || item.stock > 0 && item.stock <= item.reorder_threshold) {
+                statusColor = "bg-amber-100 text-amber-700 border-amber-200";
+                dotColor = "bg-amber-500";
+              }
+
+              return (
+                <tr key={idx} className="hover:bg-slate-50 transition-colors group">
+                  <td className="px-6 py-4">
+                    <div className="font-bold text-slate-800 line-clamp-1" title={item.name}>{item.name}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={cn(
+                      "text-[10px] font-bold px-2 py-1 rounded inline-flex items-center border",
+                      statusColor
+                    )}>
+                      <span className={cn("w-1.5 h-1.5 rounded-full mr-1.5", dotColor)}></span>
+                      {item.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right">
+                    <div className="flex items-baseline justify-end space-x-1">
+                      <span className="text-base font-extrabold text-slate-700">{item.stock}</span>
                     </div>
-                    {item.prescription_required && (
-                      <div className="ml-2 bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center shrink-0" title="Prescription Required">
-                        <ShieldCheck size={12} className="mr-0.5"/> Rx
-                      </div>
-                    )}
-                  </div>
-                  <div className="text-xs text-slate-400 mt-1">{item.category}</div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <span className="font-bold text-slate-700 w-8">{item.stock}</span>
-                    <span className="text-xs text-slate-400 ml-1">/ {item.reorder_threshold} (min)</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={cn(
-                    "px-2.5 py-1 rounded-full text-xs font-semibold",
-                    item.status === 'In Stock' ? "bg-emerald-100 text-emerald-700" :
-                    item.status === 'Low Stock' ? "bg-amber-100 text-amber-700" :
-                    "bg-rose-100 text-rose-700"
-                  )}>
-                    {item.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center space-x-1">
-                    <span className="font-medium text-slate-700">{item.profit_margin}%</span>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {inventory.length === 0 && (
+                  </td>
+                </tr>
+              );
+            })}
+            {filteredInventory.length === 0 && (
               <tr>
-                <td colSpan="4" className="px-6 py-8 text-center text-slate-400">No inventory found</td>
+                <td colSpan="3" className="px-6 py-8 text-center text-slate-400">
+                  {inventory.length === 0 ? "No inventory found" : "No medications match your search"}
+                </td>
               </tr>
             )}
           </tbody>

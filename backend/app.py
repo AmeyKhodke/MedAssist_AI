@@ -298,10 +298,21 @@ def update_admin_approval(approval_id: int, update: ApprovalStatusUpdate):
 
     database.update_approval_status(approval_id, update.status)
     
-    # Notify user
+    # Action upon approval/rejection
     medicine = approval['medicine']
     if update.status == "approved":
-        msg = f"Your prescription for {medicine} has been approved! You can now place your order."
+        # Simulate execution
+        approved_order = {
+            "medicines": [{"name": medicine, "qty": 1}] # Defaulting to 1 for this prototype
+        }
+        
+        execution = agents.executor.run(approved_order, user_id=approval['user_id'])
+        if execution["status"] == "success":
+            msg = f"Your prescription for {medicine} has been approved! Order Placed! Total: ₹{execution['total_price']}"
+            database.save_chat_message(approval['user_id'], "assistant", msg)
+            langfuse_client.flush()
+        else:
+            msg = f"Your prescription for {medicine} was approved, but order failed: {execution.get('error')}"
     else:
         msg = f"Your prescription for {medicine} was rejected. Please contact support."
     

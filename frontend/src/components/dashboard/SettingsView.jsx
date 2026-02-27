@@ -16,7 +16,6 @@ export default function SettingsView() {
           <SettingsTab icon={<Store size={18} />} label="Pharmacy Profile" />
           <SettingsTab icon={<Lock size={18} />} label="Security" />
           <SettingsTab icon={<Bell size={18} />} label="Notifications" />
-          <SettingsTab icon={<Key size={18} />} label="API Keys" />
           <SettingsTab icon={<Database size={18} />} label="Data Sync" />
         </div>
 
