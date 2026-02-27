@@ -6,8 +6,12 @@ import models
 import database
 import langfuse_client
 import httpx
+from agents import extractor, safety, executor, proactive, chitchat
 
 app = FastAPI(title="Pharmacy Agent Backend")
+
+class CheckoutRequest(BaseModel):
+    prescription_verified: bool = False
 
 app.add_middleware(
     CORSMiddleware,
@@ -100,49 +104,22 @@ def agent_chat_process(request: ChatRequest):
         return {"result": resp}
 
     if text.lower() in ["yes", "confirm", "ok", "sure", "please", "confirm order"]:
-        # Retrieve history to find the pending order
-        # We need the last message from assistant
-        history = database.get_chat_history(user_id)
-        if not history:
-             resp = "I don't have a pending order to confirm."
+        # Retrieve cart from database
+        cart_items = database.get_cart(user_id)
+        if not cart_items:
+             resp = "Your cart is currently empty."
              database.save_chat_message(user_id, "assistant", resp)
              return {"result": resp}
         
-        last_msg = history[-1]['content'] # Last assistant msg
-        # We need to find the one BEFORE the current user "yes". 
-        # get_chat_history returns ascending. So last one is the "yes" we just saved? 
-        # Let's check. save_chat_message was called above. So history[-1] is USER "yes".
-        # History[-2] should be ASSISTANT "Do you want to confirm...?"
+        # Prepare payload for safety and execution
+        # cart_items has 'medicine' and 'quantity' instead of 'name' and 'qty'
+        formatted_meds = [{"name": item['medicine'], "qty": item['quantity']} for item in cart_items]
         
-        if len(history) < 2:
-             resp = "I don't have a pending order to confirm."
-             database.save_chat_message(user_id, "assistant", resp)
-             return {"result": resp}
-             
-        # Look for the pending order prompt in recent history
-        # We look backwards
-        pending_text = None
-        for i in range(len(history)-2, -1, -1):
-            msg = history[i]
-            if msg['role'] == 'assistant' and "Do you want to confirm" in msg['content']:
-                pending_text = history[i-1]['content'] # The USER order request before that?
-                # Actually, simpler: The assistant msg contains the details: "I have found X..."
-                # But to EXECUTE, we need to re-run the extraction on the original user text.
-                # So we need the USER message that triggered that assistant response.
-                if i > 0 and history[i-1]['role'] == 'user':
-                     pending_text = history[i-1]['content']
-                break
+        extraction = {
+            "medicines": formatted_meds,
+            "prescription_verified": request.prescription_verified
+        }
         
-        if not pending_text:
-             resp = "I couldn't find a recent order to confirm."
-             database.save_chat_message(user_id, "assistant", resp)
-             return {"result": resp}
-             
-        # Re-process the original text with force_execute=True logic (or just normal flow but skip confirmation check)
-        # To avoid recursion, let's extract and execute directly here.
-        
-        extraction = agents.extractor.run(pending_text, user_id=user_id)
-        extraction["prescription_verified"] = request.prescription_verified # Reuse current status
         safety = agents.safety.run(extraction, user_id=user_id)
         
         if not safety["approved"]:
@@ -152,8 +129,9 @@ def agent_chat_process(request: ChatRequest):
              
         execution = agents.executor.run(safety, user_id=user_id)
         if execution["status"] == "success":
+            database.clear_cart(user_id) # Empty cart after success
             med_names = ", ".join([m['name'] for m in safety['medicines']])
-            resp = f"Order Placed! {med_names}. Total: ₹{execution['total_price']}"
+            resp = f"Order Placed successfully! {med_names}. Total: ₹{execution['total_price']:.2f}"
             database.save_chat_message(user_id, "assistant", resp)
             langfuse_client.flush()
             return {"result": resp, "data": execution}
@@ -162,6 +140,30 @@ def agent_chat_process(request: ChatRequest):
             database.save_chat_message(user_id, "assistant", resp)
             langfuse_client.flush()
             return {"result": resp, "error": execution.get("error")}
+
+    # --- SHOW CART LOGIC ---
+    if text.lower() in ["show cart", "view cart", "my cart", "show my cart", "cart"]:
+        cart_items = database.get_cart(user_id)
+        if not cart_items:
+            resp = "Your cart is empty."
+            database.save_chat_message(user_id, "assistant", resp)
+            return {"result": resp}
+            
+        formatted_meds = [{"name": item['medicine'], "qty": item['quantity']} for item in cart_items]
+        total_est = sum(item['price'] for item in cart_items)
+        med_summary = ", ".join([f"{m['qty']}x {m['name']}" for m in formatted_meds])
+        
+        resp = f"You have {len(formatted_meds)} items in your cart. Total approx: ₹{total_est:.2f}. Do you want to confirm?"
+        database.save_chat_message(user_id, "assistant", resp)
+        langfuse_client.flush()
+        return {
+            "result": resp, 
+            "data": {
+                "cart_items": formatted_meds,
+                "total_price": total_est
+            },
+            "status": "pending_confirmation"
+        }
 
     # --- NORMAL ORDER FLOW ---
     # 1. Extract Order
@@ -183,36 +185,41 @@ def agent_chat_process(request: ChatRequest):
         database.save_chat_message(user_id, "assistant", resp)
         return {"result": resp}
     
-    # 2. Safety Check (Preliminary)
-    extraction["prescription_verified"] = request.prescription_verified
-    safety_result = agents.safety.run(extraction, user_id=user_id)
-    
-    if not safety_result["approved"]:
-        resp = f"I cannot process this order. {safety_result['reason']}"
-        database.save_chat_message(user_id, "assistant", resp)
-        return {"result": resp, "status": safety_result.get("status", "rejected")}
-    
-    # 3. CONFIRMATION PROMPT
-    # Instead of executing, we ask for confirmation.
-    med_summary = ", ".join([f"{m['qty']}x {m['name']}" for m in safety_result['medicines']])
-    
-    # Calculate approx price for display
-    total_est = 0
+    # 2. Add to Cart (instead of pending_confirmation)
     conn = database.get_db_connection()
-    for m in safety_result['medicines']:
-        r = conn.execute("SELECT unit_price FROM medicines WHERE name = ?", (m['name'],)).fetchone()
-        if r: total_est += r['unit_price'] * m['qty']
+    added_names = []
+    
+    for med in extraction["medicines"]:
+        name = med["name"]
+        qty = med["qty"]
+        # get price
+        r = conn.execute("SELECT unit_price FROM medicines WHERE name = ?", (name,)).fetchone()
+        price = (r['unit_price'] * qty) if r else 0.0
+        
+        database.add_to_cart(user_id, name, qty, price)
+        added_names.append(f"{qty}x {name}")
+        
     conn.close()
     
-    resp = f"I found: {med_summary}. Total approx: ₹{total_est:.2f}. Do you want to confirm?"
+    med_summary = ", ".join(added_names)
+    resp = f"Added {med_summary} to your cart."
     database.save_chat_message(user_id, "assistant", resp)
-    
     langfuse_client.flush()
+    
+    # Just return text, UI cart will stay updated if we add endpoints
     return {
-        "result": resp, 
-        "data": {}, # No execution data yet
-        "status": "pending_confirmation"
+        "result": resp,
+        "status": "cart_added"
     }
+
+@app.get("/cart/{user_id}")
+def get_user_cart(user_id: str):
+    return database.get_cart(user_id)
+
+@app.delete("/cart/{user_id}")
+def clear_user_cart(user_id: str):
+    database.clear_cart(user_id)
+    return {"status": "cleared"}
 
 @app.get("/chat/history/{user_id}")
 def get_chat_history(user_id: str):
@@ -230,6 +237,30 @@ def get_proactive_alerts(user_id: Optional[str] = None):
 @app.get("/orders/{user_id}")
 def get_user_orders(user_id: str):
     return database.get_orders_by_user(user_id)
+
+@app.post("/cart/{user_id}/checkout")
+def checkout_user_cart(user_id: str, request: CheckoutRequest):
+    cart_items = database.get_cart(user_id)
+    if not cart_items:
+         raise HTTPException(status_code=400, detail="Cart is empty")
+    
+    formatted_meds = [{"name": item['medicine'], "qty": item['quantity']} for item in cart_items]
+    
+    extraction = {
+        "medicines": formatted_meds,
+        "prescription_verified": request.prescription_verified
+    }
+    
+    safety_check = agents.safety.run(extraction, user_id=user_id)
+    if not safety_check["approved"]:
+         raise HTTPException(status_code=400, detail=f"Safety check failed: {safety_check['reason']}")
+         
+    execution = agents.executor.run(safety_check, user_id=user_id)
+    if execution["status"] == "success":
+        database.clear_cart(user_id)
+        return {"status": "success", "data": execution}
+    else:
+        raise HTTPException(status_code=400, detail=f"Order failed: {execution.get('error')}")
 
 class NotificationRequest(BaseModel):
     user_id: str

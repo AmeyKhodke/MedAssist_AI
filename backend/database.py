@@ -94,6 +94,18 @@ def init_db():
         )
     ''')
     
+    # Create cart_items table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS cart_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT,
+            medicine TEXT,
+            quantity INTEGER,
+            price REAL,
+            added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
     conn.commit()
     conn.close()
     
@@ -408,6 +420,33 @@ def get_orders_by_user(user_id: str):
     orders = conn.execute('SELECT * FROM orders WHERE user_id = ? ORDER BY timestamp DESC', (user_id,)).fetchall()
     conn.close()
     return [dict(row) for row in orders]
+
+def add_to_cart(user_id: str, medicine: str, quantity: int, price: float):
+    conn = get_db_connection()
+    # Check if exists, update qty if does
+    cur = conn.execute('SELECT quantity FROM cart_items WHERE user_id = ? AND medicine = ?', (user_id, medicine))
+    row = cur.fetchone()
+    if row:
+        new_qty = row['quantity'] + quantity
+        conn.execute('UPDATE cart_items SET quantity = ?, price = ? WHERE user_id = ? AND medicine = ?', 
+                     (new_qty, price * new_qty / quantity if quantity else price, user_id, medicine))
+    else:
+        conn.execute('INSERT INTO cart_items (user_id, medicine, quantity, price) VALUES (?, ?, ?, ?)',
+                     (user_id, medicine, quantity, price))
+    conn.commit()
+    conn.close()
+
+def get_cart(user_id: str):
+    conn = get_db_connection()
+    items = conn.execute('SELECT * FROM cart_items WHERE user_id = ? ORDER BY added_at ASC', (user_id,)).fetchall()
+    conn.close()
+    return [dict(row) for row in items]
+
+def clear_cart(user_id: str):
+    conn = get_db_connection()
+    conn.execute('DELETE FROM cart_items WHERE user_id = ?', (user_id,))
+    conn.commit()
+    conn.close()
 
 def create_notification(user_id: str, message: str):
     conn = get_db_connection()
