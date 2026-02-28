@@ -6,15 +6,21 @@ import LoginPage from './LoginPage';
 import { Pill, LogOut, User } from 'lucide-react';
 
 function App() {
-  const [user, setUser] = useState(null); // { id: 'PAT001', role: 'client' }
+  const [user, setUser] = useState(() => {
+    // Check for saved user in localStorage on initial load
+    const savedUser = localStorage.getItem('pharmacy_app_user');
+    return savedUser ? JSON.parse(savedUser) : null;
+  }); // { id: 'PAT001', role: 'client' }
 
   const handleLogin = (credentials) => {
     console.log("Logging in:", credentials);
     setUser(credentials);
+    localStorage.setItem('pharmacy_app_user', JSON.stringify(credentials));
   };
 
   const handleLogout = () => {
     setUser(null);
+    localStorage.removeItem('pharmacy_app_user');
   };
 
   if (!user) {

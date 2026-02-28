@@ -25,12 +25,12 @@ export default function AdminDashboard({ setRole }) {
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 flex overflow-hidden">
       {/* Fixed Sidebar */}
       <Sidebar setRole={setRole} activeView={activeView} setActiveView={setActiveView} />
-      
+
       {/* Main Content Area */}
       <div className="flex-1 md:ml-64 flex flex-col relative h-screen overflow-y-auto">
         {/* Fixed Topbar */}
         <Topbar />
-        
+
         {/* Scrollable Main Content */}
         <main className="flex-1 mt-16 p-4 md:p-8 w-full">
           <div className="w-full">
@@ -47,7 +47,7 @@ export default function AdminDashboard({ setRole }) {
                       Real-time analytics, inventory management, and proactive intelligence network overview.
                     </p>
                   </div>
-                  <button 
+                  <button
                     onClick={() => setRefreshKey(prev => prev + 1)}
                     className="flex items-center space-x-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg font-medium transition-colors shadow-sm active:scale-95"
                   >

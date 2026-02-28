@@ -139,6 +139,7 @@ import agents
 
 @app.post("/agent/upload_prescription")
 async def upload_prescription(user_id: str = Form(...), session_id: Optional[str] = Form(None), file: UploadFile = File(...)):
+    import json
     # Save the file
     ext = os.path.splitext(file.filename)[1]
     filename = f"{uuid.uuid4()}{ext}"
@@ -153,59 +154,79 @@ async def upload_prescription(user_id: str = Form(...), session_id: Optional[str
     with open(file_path, "rb") as f:
         file_bytes = f.read()
         
-    mime_type = file.content_type or "image/jpeg"
+    mime_type = file.content_type
+    if not mime_type:
+        mime_type = "image/jpeg"
+        if ext.lower() == ".pdf":
+            mime_type = "application/pdf"
+        elif ext.lower() == ".txt":
+            mime_type = "text/plain"
+            
     extraction = agents.extract_from_image(file_bytes, mime_type)
     
-    added_meds = []
+    matched_meds = []
     unrecognized = []
+    suggestions = extraction.get("suggestions", [])
+    doctor_name = extraction.get("doctor_name", "Not Specified")
+    
     conn = database.get_db_connection()
+    
     for med in extraction.get("medicines", []):
         name = med["name"]
         qty = med["qty"]
         
         # Verify it exists in DB (Exact match first)
-        r = conn.execute("SELECT name, unit_price FROM medicines WHERE name = ?", (name,)).fetchone()
+        r = conn.execute("SELECT name, unit_price, prescription_required FROM medicines WHERE name = ?", (name,)).fetchone()
         if not r:
             # Fallback to LIKE match
-            r = conn.execute("SELECT name, unit_price FROM medicines WHERE name LIKE ?", (f"%{name}%",)).fetchone()
+            r = conn.execute("SELECT name, unit_price, prescription_required FROM medicines WHERE name LIKE ?", (f"%{name}%",)).fetchone()
             
         if r:
             exact_name = r['name']
             price = r['unit_price'] * qty
-            # Add to cart as prescribed
-            database.add_to_cart(user_id, exact_name, qty, price, is_prescribed=True)
-            added_meds.append(f"{qty}x {exact_name}")
+            req_rx = bool(r['prescription_required'])
+            
+            matched_meds.append({
+                "name": exact_name,
+                "qty": qty,
+                "price": price,
+                "req_rx": req_rx
+            })
         else:
             unrecognized.append(name)
             
     conn.close()
     
-    # Store the prescription itself in the admin dashboard immediately
+    # Formulate Admin Summary
     med_summary_parts = []
-    if added_meds:
-        med_summary_parts.append(", ".join(added_meds))
+    if matched_meds:
+        med_summary_parts.append("Recognized: " + ", ".join([f"{m['qty']}x {m['name']}" for m in matched_meds]))
     if unrecognized:
-        med_summary_parts.append(f"(Unrecognized: {', '.join(unrecognized)})")
-    if extraction.get("suggestions"):
-        med_summary_parts.append(f"(Suggestions: {', '.join(extraction['suggestions'])})")
+        med_summary_parts.append(f"Unrecognized: {', '.join(unrecognized)}")
+    if suggestions:
+        med_summary_parts.append(f"Suggestions: {', '.join(suggestions)}")
         
-    final_summary = " ".join(med_summary_parts) if med_summary_parts else "No medications recognized."
+    final_summary = " | ".join(med_summary_parts) if med_summary_parts else "No medications recognized."
     
-    # Send it to admin as 'uploaded'
-    database.create_prescription_approval(user_id, final_summary, file_url, status="uploaded")
+    # Set to pending so Admin can review before adding to cart
+    extracted_data_json = json.dumps({"matched_meds": matched_meds, "unrecognized": unrecognized})
+    status = "pending"
     
-    # Chat response
-    resp = f"Prescription uploaded successfully. Extracted and added {', '.join(added_meds) if added_meds else 'no recognized medicines'} to your cart as prescribed."
-    if unrecognized or extraction.get("suggestions"):
-        resp += " Some items were not found in our inventory."
+    # Store in queue for admin review (does not add to cart yet)
+    database.create_prescription_approval(
+        user_id, final_summary, file_url, status=status, 
+        extracted_data=extracted_data_json, doctor_name=doctor_name
+    )
     
+    resp = "Prescription uploaded successfully. It has been sent to our Admin queue for medical review. Once approved, the medicines will be automatically added to your cart."
     database.save_chat_message(user_id, "assistant", resp, session_id)
     langfuse_client.flush()
     
     return {
         "result": resp,
         "prescription_url": file_url,
-        "added_meds": added_meds
+        "status": status,
+        "matched_meds": matched_meds
     }
 
 class ChatRequest(BaseModel):
@@ -268,7 +289,7 @@ def agent_chat_process(request: ChatRequest):
                 if database.check_approved_prescription(user_id, med):
                      approved_meds.append({"name": med, "qty": qty})
                 else:
-                    database.create_prescription_approval(user_id, med, rx_url)
+                    database.create_prescription_approval(user_id, med, rx_url, doctor_name="Not Specified")
                     pending_approval_meds.append(f"{qty}x {med}")
             else:
                 approved_meds.append({"name": med, "qty": qty})
@@ -338,27 +359,55 @@ def agent_chat_process(request: ChatRequest):
         }
 
     # --- NORMAL ORDER FLOW ---
-    # 1. Extract Order
+    
+    # 1. Quick Question Routing (Saves API limits for simple questions)
+    text_lower = text.lower()
+    is_question = any(q in text_lower for q in ['?', 'what', 'price', 'cost', 'how much', 'do you have', 'stock', 'available', 'tell me'])
+    
+    if is_question:
+        chitchat_resp = agents.chitchat.run(text)
+        if chitchat_resp:
+            database.save_chat_message(user_id, "assistant", chitchat_resp)
+            langfuse_client.flush()
+            return {"result": chitchat_resp}
+            
+    # 2. Extract Order
     extraction = agents.extractor.run(text, user_id=user_id)
     llm_answer = extraction.get("answer", "I understood your request.")
 
     if not extraction["medicines"]:
-        if extraction.get("error") == "gemini_rate_limit":
-             resp = "Ah! I'm sorry, but my AI NLP Service has hit its Free API Rate Limit with Google Gemini. Please try again in an hour!"
+        # Even if rate limit hit, let chitchat try its local regex fallbacks
+        chitchat_resp = agents.chitchat.run(text)
+        
+        if chitchat_resp:
+            resp = chitchat_resp
+        elif extraction.get("error") in ["groq_rate_limit", "gemini_rate_limit"]:
+             resp = "Ah! I'm sorry, but my AI NLP Service has hit its Free API Rate Limit. Please try again in an hour. You can still ask me about prices or stock!"
              database.save_chat_message(user_id, "assistant", resp, session_id)
              return {"result": resp, "session_id": session_id}
              
-        # Check for suggestions if it seems they wanted an item
-        suggestions = extraction.get("suggestions", [])
-        if suggestions and "price" not in text.lower():
-            sugg_str = ", ".join(suggestions[:3]) # Show top 3
-            resp = f"I couldn't find that exact medicine. Did you mean: {sugg_str}?"
+        # Check if the AI identified an item the user wants to buy but needs quantity confirmation
+        elif extraction.get("pending_item_name"):
+             item_name = extraction["pending_item_name"]
+             resp = llm_answer # Should be "How much X do you need?"
+             database.save_chat_message(user_id, "assistant", resp)
+             return {
+                 "result": resp, 
+                 "status": "pending_quantity", 
+                 "data": {"item_name": item_name}
+             }
+             
         else:
-            # Use the intelligent LLM answer! (Prices, Q&A, greetings)
-            resp = llm_answer
+            suggestions = extraction.get("suggestions", [])
+            if suggestions and "price" not in text.lower():
+                sugg_str = ", ".join(suggestions[:3]) # Show top 3
+                resp = f"I couldn't find that exact medicine. Did you mean: {sugg_str}?"
+            else:
+                resp = llm_answer if llm_answer else "I couldn't identify a medicine. Please specify the name and quantity."
             
         database.save_chat_message(user_id, "assistant", resp, session_id)
-        return {"result": resp, "session_id": session_id}
+        langfuse_client.flush()
+        return {"result": resp, "status": "added_to_cart", "session_id": session_id}
     
     # 2. Safety Check (Preliminary)
     extraction["prescription_verified"] = False # No file uploaded directly in chat yet
@@ -369,31 +418,48 @@ def agent_chat_process(request: ChatRequest):
         database.save_chat_message(user_id, "assistant", resp, session_id)
         return {"result": resp, "status": safety_result.get("status", "rejected"), "session_id": session_id}
     
-    # 3. Add Multiple Items to Cart
+    # 3. Require Prescription Upload OR Auto-Add to Cart
     conn = database.get_db_connection()
-    added_names = []
+    otc_meds = []
+    rx_meds = []
     
-    for med in safety_result["medicines"]:
+    # Check if any extracted medicine requires a prescription
+    for med in extraction["medicines"]:
         name = med["name"]
         qty = med["qty"]
-        # get price
-        r = conn.execute("SELECT unit_price FROM medicines WHERE name = ?", (name,)).fetchone()
-        price = (r['unit_price'] * qty) if r else 0.0
-        
-        database.add_to_cart(user_id, name, qty, price)
-        added_names.append(f"{qty}x {name}")
-        
-    conn.close()
+        row = conn.execute("SELECT prescription_required, unit_price FROM medicines WHERE name = ?", (name,)).fetchone()
+        if row:
+            if row['prescription_required']:
+                rx_meds.append({"name": name, "qty": qty})
+            else:
+                price = row['unit_price'] * qty
+                otc_meds.append({"name": name, "qty": qty, "price": price})
     
-    # We use the LLM's natural conversational response
-    resp = llm_answer
+    resp_parts = []
+    if otc_meds:
+        otc_names = []
+        for med in otc_meds:
+            database.add_to_cart(user_id, med["name"], med["qty"], med["price"], is_prescribed=False)
+            otc_names.append(f"{med['qty']}x {med['name']}")
+        otc_summary = ", ".join(otc_names)
+        resp_parts.append(f"Great! I have added {otc_summary} to your cart.")
+        
+    if rx_meds:
+        rx_names = [f"{m['qty']}x {m['name']}" for m in rx_meds]
+        rx_summary = ", ".join(rx_names)
+        resp_parts.append(f"For {rx_summary}, a prescription is required. Please upload your prescription (PDF, JPG, PNG, or TXT format) first. Once uploaded, I will automatically extract the medicines, verify them with our inventory, and add them to your cart.")
+    else:
+        resp_parts.append("You can type 'view cart' to see your items or 'confirm' to place the order.")
+        
+    resp = " ".join(resp_parts)
     
     database.save_chat_message(user_id, "assistant", resp, session_id)
     langfuse_client.flush()
+    conn.close()
     
     return {
         "result": resp,
-        "status": "cart_added",
+        "status": "prescription_required" if rx_meds else "added_to_cart",
         "session_id": session_id
     }
 
@@ -441,27 +507,10 @@ def get_user(user_id: str):
     if not profile:
         profile = {"user_id": user_id, "name": f"Patient {user_id}", "email": f"{user_id}@example.com"}
         
-    if profile.get("profile_pic_url"):
-        profile["avatar"] = f"http://localhost:8000/{profile['profile_pic_url']}"
-    else:
-        name = profile.get("name", f"Patient {user_id}")
-        profile["avatar"] = f"https://api.dicebear.com/7.x/avataaars/svg?seed={name}&backgroundColor=e2e8f0"
+    name = profile.get("name", f"Patient {user_id}")
+    profile["avatar"] = f"https://api.dicebear.com/7.x/avataaars/svg?seed={name}&backgroundColor=e2e8f0"
     
     return profile
-
-@app.post("/api/users/{user_id}/avatar")
-async def upload_avatar(user_id: str, file: UploadFile = File(...)):
-    ext = file.filename.split(".")[-1]
-    filename = f"{user_id}_{uuid.uuid4().hex[:8]}.{ext}"
-    filepath = os.path.join(UPLOAD_DIR, filename)
-    
-    with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-        
-    static_url = f"static/uploads/{filename}"
-    database.update_user_profile_pic(user_id, static_url)
-    
-    return {"status": "success", "avatar_url": f"http://localhost:8000/{static_url}"}
 @app.get("/cart/{user_id}")
 def get_user_cart(user_id: str):
     return database.get_cart(user_id)
@@ -531,9 +580,11 @@ def get_admin_approvals():
 
 class ApprovalStatusUpdate(BaseModel):
     status: str # "approved" or "rejected"
+    reason: Optional[str] = None
 
 @app.post("/admin/approvals/{approval_id}")
 def update_admin_approval(approval_id: int, update: ApprovalStatusUpdate):
+    import json
     if update.status not in ["approved", "rejected"]:
         raise HTTPException(status_code=400, detail="Invalid status")
     
@@ -546,31 +597,68 @@ def update_admin_approval(approval_id: int, update: ApprovalStatusUpdate):
     if not approval:
         raise HTTPException(status_code=404, detail="Approval request not found")
 
-    database.update_approval_status(approval_id, update.status)
+    database.update_approval_status(approval_id, update.status, update.reason)
     
     # Action upon approval/rejection
-    medicine = approval['medicine']
+    # Cast sqlite3.Row to dict to safely use .get()
+    approval_dict = dict(approval)
+    medicine_str = approval_dict['medicine']
+    extracted_data = approval_dict.get('extracted_data')
+    user_idd = approval_dict['user_id']
+    
+    # Trace the admin action in Langfuse
+    trace = langfuse_client.trace_interaction(f"Admin_{update.status.capitalize()}", {"approval_id": approval_id, "medicine": medicine_str, "reason": update.reason}, user_id=user_idd)
+    
+    msg = ""
     if update.status == "approved":
-        # Simulate execution
-        approved_order = {
-            "medicines": [{"name": medicine, "qty": 1}] # Defaulting to 1 for this prototype
-        }
-        
-        execution = agents.executor.run(approved_order, user_id=approval['user_id'])
-        if execution["status"] == "success":
-            msg = f"Your prescription for {medicine} has been approved! Order Placed! Total: ₹{execution['total_price']}"
-            
-            # Update global financial state
-            add_to_financial_totals(execution['total_price'])
-            
-            database.save_chat_message(approval['user_id'], "assistant", msg)
+        if extracted_data:
+            # Policy Agent -> Admin Approval Flow
+            data = json.loads(extracted_data)
+            matched_meds = data.get("matched_meds", [])
+            for m in matched_meds:
+                database.add_to_cart(user_idd, m['name'], m['qty'], m['price'], is_prescribed=True)
+                
+            med_names = ", ".join([f"{m['qty']}x {m['name']}" for m in matched_meds])
+            msg = f"Your uploaded prescription has been APPROVED by our medical team! The following medicines have been added to your cart: {med_names}. You can now checkout."
+            database.save_chat_message(user_idd, "assistant", msg)
             langfuse_client.flush()
         else:
-            msg = f"Your prescription for {medicine} was approved, but order failed: {execution.get('error')}"
+            # Legacy Chat Flow
+            approved_order = {
+                "medicines": [{"name": medicine_str, "qty": 1}] # Defaulting to 1 for this prototype
+            }
+            
+            execution = agents.executor.run(approved_order, user_id=user_idd)
+            if execution["status"] == "success":
+                # Update global financial state
+                add_to_financial_totals(execution['total_price'])
+                
+                msg = f"Your prescription for {medicine_str} has been approved! Order Placed! Total: ₹{execution['total_price']}"
+                database.save_chat_message(user_idd, "assistant", msg)
+                langfuse_client.flush()
+            else:
+                msg = f"Your prescription for {medicine_str} was approved, but order failed: {execution.get('error')}"
     else:
-        msg = f"Your prescription for {medicine} was rejected. Please contact support."
+        if extracted_data:
+            msg = f"Your uploaded prescription could not be verified and was REJECTED by our medical team. "
+            if update.reason:
+                msg += f"Reason: {update.reason}. "
+            msg += "Please review and upload a valid prescription, or contact support."
+        else:
+            msg = f"Your prescription for {medicine_str} was rejected. "
+            if update.reason:
+                msg += f"Reason: {update.reason}. "
+            msg += "Please contact support."
     
-    database.create_notification(approval['user_id'], msg)
+    # Also save as chat message
+    database.save_chat_message(user_idd, "assistant", msg)
+    database.create_notification(user_idd, msg)
+    
+    if trace:
+        trace.update(output={"message": msg, "status": update.status})
+        trace.end()
+        
+    langfuse_client.flush()
     
     return {"status": "success", "approval_id": approval_id, "new_status": update.status}
 
@@ -607,6 +695,10 @@ def api_refill_predictions():
 @app.get("/api/approvals")
 def api_approvals():
     return database.get_pending_approvals()
+
+@app.get("/api/prescriptions")
+def api_prescriptions():
+    return database.get_all_prescriptions()
 
 @app.post("/api/approvals/{approval_id}")
 def api_update_approval(approval_id: int, update: ApprovalStatusUpdate):

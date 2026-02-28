@@ -22,10 +22,22 @@ export default function ApprovalPanel() {
   };
 
   const handleAction = async (approvalId, actionStr) => {
+    let reason = null;
+    if (actionStr === 'rejected') {
+      reason = window.prompt("Please provide a reason for rejecting this prescription (e.g., 'Illegible handwriting', 'Expired prescription'):");
+      if (reason === null) {
+        // User cancelled the prompt
+        return;
+      }
+    }
+
     // Optimistic UI update
     setApprovals(prev => prev.filter(a => a.id !== approvalId));
     try {
-      await axios.post(`http://localhost:8000/api/approvals/${approvalId}`, { status: actionStr });
+      await axios.post(`http://localhost:8000/api/approvals/${approvalId}`, {
+        status: actionStr,
+        reason: reason
+      });
     } catch (err) {
       console.error(`Error updating approval ${approvalId}`, err);
       // Re-fetch on error to revert
@@ -44,7 +56,7 @@ export default function ApprovalPanel() {
         </div>
         <span className="bg-rose-100 text-rose-700 text-xs font-bold px-3 py-1 rounded-full">{approvals.length} Pending Actions</span>
       </div>
-      
+
       <div className="overflow-x-auto flex-1 p-0">
         {approvals.length === 0 ? (
           <div className="h-64 flex flex-col items-center justify-center text-slate-400 p-6 text-center">
@@ -82,14 +94,14 @@ export default function ApprovalPanel() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end space-x-2">
-                       <button 
+                      <button
                         onClick={() => handleAction(req.id, 'rejected')}
                         className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-sm font-medium bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
                       >
                         <X size={16} />
                         <span>Deny</span>
                       </button>
-                      <button 
+                      <button
                         onClick={() => handleAction(req.id, 'approved')}
                         className="flex items-center space-x-1.5 px-4 py-1.5 rounded-md text-sm font-semibold bg-[#10B981] hover:bg-emerald-600 text-white transition-colors shadow-sm"
                       >

@@ -23,6 +23,11 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
   const [rxVerified, setRxVerified] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [cartItems, setCartItems] = useState([]);
+  
+  // Pending Quantity Widget State
+  const [pendingDigit, setPendingDigit] = useState(1);
+  const [pendingUnit, setPendingUnit] = useState(10); // Default to Strip
+  
   const messagesEndRef = useRef(null);
 
   const fetchCart = async () => {
@@ -53,11 +58,19 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
       if (sessionId) {
         axios.get(`http://localhost:8000/api/chat/history/${sessionId}`)
           .then(res => {
-            const history = res.data.map(msg => ({
-              role: msg.role === 'assistant' ? 'assistant' : 'user',
-              content: msg.content,
-              type: 'text'
-            }));
+            const history = res.data.map(msg => {
+              let parsedTime = null;
+              if (msg.timestamp) {
+                const isoString = msg.timestamp.replace(' ', 'T') + 'Z';
+                parsedTime = new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              }
+              return {
+                role: msg.role === 'assistant' ? 'assistant' : 'user',
+                content: msg.content,
+                type: 'text',
+                timestamp: parsedTime
+              };
+            });
             if (history.length > 0) {
               setMessages(history); 
             } else {
@@ -82,7 +95,8 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
     if (!text.trim()) return;
 
     // Add user message
-    const newMessages = [...messages, { role: 'user', content: text, type: 'text' }];
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const newMessages = [...messages, { role: 'user', content: text, type: 'text', timestamp: now }];
     setMessages(newMessages);
     setInput('');
     setIsLoading(true);
@@ -105,12 +119,14 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
       else if (result.status === 'pending_admin' || result.status === 'needs_prescription') messageType = 'warning';
 
       // Add agent response
+      const responseTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: result.result,
         type: messageType,
         status: result.status,
-        metadata: result.data
+        metadata: result.data,
+        timestamp: responseTime
       }]);
 
       // Voice Output
@@ -135,10 +151,15 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
     if (sessionId) formData.append('session_id', sessionId);
 
     try {
+      const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const previewUrl = URL.createObjectURL(file);
+
       setMessages(prev => [...prev, {
         role: 'user',
         content: `Uploading prescription: ${file.name}...`,
-        type: 'text'
+        type: 'image',
+        imageUrl: previewUrl,
+        timestamp: now
       }]);
 
       const response = await axios.post('http://localhost:8000/agent/upload_prescription', formData, {
@@ -154,10 +175,12 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
       
       setRxVerified(true);
 
+      const responseTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: result.result,
         type: 'success',
+        timestamp: responseTime
       }]);
 
       // Also refresh cart if needed
@@ -245,6 +268,11 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
                     : "bg-[#F1F5F9] dark:bg-slate-800 border border-[#E2E8F0] dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-2xl rounded-tl-sm"
                 )}>
                   <div className="flex flex-col gap-1">
+                    {msg.type === 'image' && msg.imageUrl && (
+                      <div className="mb-2 w-48 h-48 md:w-64 md:h-64 rounded-xl overflow-hidden shadow-sm border border-slate-200">
+                        <img src={msg.imageUrl} alt="Uploaded Prescription" className="w-full h-full object-cover hover:scale-105 transition-transform duration-500 cursor-pointer" onClick={() => window.open(msg.imageUrl, '_blank')} />
+                      </div>
+                    )}
                     <span className={cn(
                       msg.type === 'warning' ? 'text-orange-800' : '',
                       msg.type === 'error' ? 'text-red-800' : ''
@@ -308,6 +336,68 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
                     </div>
                   )}
 
+                  {/* Dose/Quantity Selector Widget */}
+                  {msg.status === 'pending_quantity' && msg.metadata && msg.metadata.item_name && idx === messages.length - 1 && (
+                    <div className="mt-4 p-5 bg-white rounded-xl border-2 border-slate-200/80 shadow-md w-full min-w-[300px] animate-in slide-in-from-bottom-2">
+                      <p className="font-bold text-slate-800 mb-1 flex items-center justify-between text-sm">
+                        <span>Select Quantity</span>
+                        <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md text-xs truncate max-w-[150px] title={msg.metadata.item_name}">
+                          {msg.metadata.item_name}
+                        </span>
+                      </p>
+                      
+                      <div className="mt-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <div className="flex gap-2 mb-3">
+                          <button 
+                            onClick={() => setPendingUnit(1)} 
+                            className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${pendingUnit === 1 ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
+                          >
+                            Tablet (x1)
+                          </button>
+                          <button 
+                            onClick={() => setPendingUnit(10)} 
+                            className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${pendingUnit === 10 ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
+                          >
+                            Strip (x10)
+                          </button>
+                          <button 
+                            onClick={() => setPendingUnit(100)} 
+                            className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${pendingUnit === 100 ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
+                          >
+                            Box (x100)
+                          </button>
+                        </div>
+                        
+                        <div className="flex items-center gap-3">
+                           <div className="relative">
+                              <input 
+                                type="number" 
+                                min="1" 
+                                max="50"
+                                value={pendingDigit}
+                                onChange={(e) => setPendingDigit(Math.max(1, parseInt(e.target.value) || 1))}
+                                className="w-[80px] bg-white border-2 border-slate-200 text-slate-800 font-bold text-center py-2 rounded-lg outline-none focus:border-blue-500 transition-colors"
+                              />
+                           </div>
+                           <div className="flex-1 text-center bg-slate-200/50 rounded-lg py-2">
+                              <span className="text-xs font-bold text-slate-500 block">Total Units</span>
+                              <span className="text-lg font-black text-slate-800">{pendingDigit * pendingUnit}</span>
+                           </div>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                           const totalQty = pendingDigit * pendingUnit;
+                           handleSendMessage(`Please add ${totalQty} of ${msg.metadata.item_name} to my cart.`);
+                        }}
+                        className="mt-3 w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-blue-500/20 active:scale-[0.98] flex items-center justify-center gap-1.5"
+                      >
+                        <ShoppingCart size={16} /> Add to Cart
+                      </button>
+                    </div>
+                  )}
+
                   {/* Confirmation Buttons */}
                   {msg.status === 'pending_confirmation' && idx === messages.length - 1 && (
                     <div className="mt-4 flex flex-col sm:flex-row gap-2 w-full">
@@ -326,9 +416,9 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
                     </div>
                   )}
                 </div>
-                {/* Timestamp placeholder */}
-                <span className="text-[10px] text-slate-400 mt-1.5 px-1 font-medium">
-                  {msg.role === 'user' ? 'Read' : 'Just now'}
+                {/* Timestamp */}
+                <span className="text-[10px] text-slate-400 mt-1.5 px-1 font-medium flex items-center gap-1">
+                  {msg.timestamp ? msg.timestamp : (msg.role === 'user' ? 'Read' : 'Just now')}
                 </span>
               </div>
             ))}

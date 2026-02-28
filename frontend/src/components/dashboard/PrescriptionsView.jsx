@@ -13,7 +13,7 @@ export default function PrescriptionsView() {
   const fetchPrescriptions = async () => {
     try {
       setLoading(true);
-      const res = await axios.get('http://localhost:8000/api/approvals');
+      const res = await axios.get('http://localhost:8000/api/prescriptions');
       setPrescriptions(res.data);
       setLoading(false);
     } catch (err) {
@@ -86,14 +86,18 @@ export default function PrescriptionsView() {
               <tr key={req.id} className="hover:bg-slate-50 transition-colors">
                 <td className="px-6 py-4 font-mono text-indigo-600 font-medium">RX-{req.id + 8840}</td>
                 <td className="px-6 py-4 text-slate-500">{new Date(req.timestamp).toLocaleDateString()}</td>
-                <td className="px-6 py-4 font-medium text-slate-800">Patient {req.user_id.substring(0, 8)}</td>
-                <td className="px-6 py-4 text-slate-600">Autosigned / Dr. AI</td>
+                <td className="px-6 py-4 text-slate-800 font-medium">Patient {req.user_id.substring(0, 8)}</td>
+                <td className="px-6 py-4 text-slate-500 italic">
+                  {(req.doctor_name && req.doctor_name !== "Unknown Doctor" && req.doctor_name !== "Not Specified") 
+                    ? <span className="text-slate-700 not-italic font-medium">{req.doctor_name}</span> 
+                    : "Not Specified"}
+                </td>
                 <td className="px-6 py-4">{req.medicine}</td>
                 <td className="px-6 py-4">
                   <span className={`px-2.5 py-1 rounded-full text-xs font-semibold flex inline-flex items-center space-x-1 ${req.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
-                      req.status === 'pending' ? 'bg-amber-100 text-amber-700' :
-                        req.status === 'uploaded' ? 'bg-blue-100 text-blue-700' :
-                          'bg-rose-100 text-rose-700'
+                    req.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                      req.status === 'uploaded' ? 'bg-blue-100 text-blue-700' :
+                        'bg-rose-100 text-rose-700'
                     }`}>
                     {req.status === 'approved' && <CheckCircle2 size={12} />}
                     {req.status === 'pending' && <Clock size={12} />}
