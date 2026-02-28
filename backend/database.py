@@ -378,11 +378,10 @@ def get_sales_analytics():
     conn = get_db_connection()
     query = '''
         SELECT 
-            date(o.timestamp) as order_date,
-            SUM(o.total_price) as total_sales,
-            SUM(o.total_price - (m.unit_price * 0.6 * o.quantity)) as total_profit
-        FROM orders o
-        JOIN medicines m ON o.medicine = m.name
+            date(timestamp) as order_date,
+            SUM(total_price) as total_sales,
+            SUM(total_price) * 0.40 as total_profit
+        FROM orders
         GROUP BY order_date
         ORDER BY order_date ASC
         LIMIT 30
