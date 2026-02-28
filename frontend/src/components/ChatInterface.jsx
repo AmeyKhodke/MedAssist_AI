@@ -169,13 +169,12 @@ const ChatInterface = ({ userId = "GUEST_WEB" }) => {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-12rem)] md:h-[600px] w-full bg-slate-50/50 rounded-[2.5rem] shadow-xl overflow-hidden border border-slate-200/60 relative">
-
+    <div className="flex flex-col h-full w-full bg-[#F8F9FB] relative">
       {/* Background Pattern */}
       <div className="absolute inset-0 z-0 opacity-[0.03] bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPgo8cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSI4IiBmaWxsPSIjMDAwIiBmaWxsLW9wYWNpdHk9IjAuMDUiPjwvcmVjdD4KPHBhdGggZD0iTTAgMEw4IDhaTTAgOEw4IDBaIiBzdHJva2U9IiMwMDAiIHN0cm9rZS1vcGFjaXR5PSIwLjA1IiBzdHJva2Utd2lkdGg9IjEiPjwvcGF0aD4KPC9zdmc+')] mix-blend-multiply"></div>
 
       {/* Header / Status Bar */}
-      <div className="bg-white/80 backdrop-blur-xl px-6 py-4 border-b border-slate-200/60 flex justify-between items-center relative z-10 shadow-sm">
+      <div className="bg-white/80 backdrop-blur-xl px-6 py-4 border-b border-[#E2E8F0] flex justify-between items-center relative z-10">
         <div className="flex items-center gap-3">
           <div className="relative">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center shadow-md">
@@ -232,8 +231,8 @@ const ChatInterface = ({ userId = "GUEST_WEB" }) => {
                 <div className={cn(
                   "px-5 py-3.5 shadow-sm text-[15px] leading-relaxed relative group",
                   msg.role === 'user'
-                    ? "bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-2xl rounded-tr-sm"
-                    : "bg-white border border-slate-200/80 text-slate-800 rounded-2xl rounded-tl-sm"
+                    ? "bg-[#0061FF] text-white rounded-2xl rounded-tr-sm"
+                    : "bg-[#F1F5F9] border border-[#E2E8F0] text-slate-800 rounded-2xl rounded-tl-sm"
                 )}>
                   <div className="flex flex-col gap-1">
                     <span className={cn(
@@ -395,7 +394,7 @@ const ChatInterface = ({ userId = "GUEST_WEB" }) => {
                 </div>
               </div>
             )}
-            <div ref={messagesEndRef} className="h-2" />
+            <div ref={messagesEndRef} className="h-40" />
           </div>
 
           {/* Premium Cart Sidebar */}
@@ -483,60 +482,64 @@ const ChatInterface = ({ userId = "GUEST_WEB" }) => {
           </div>
         </div>
 
-        {/* Input Area */}
-        <div className="p-4 bg-white/90 backdrop-blur-xl border-t border-slate-200/60 relative z-10">
-          <div className="flex gap-2 items-end max-w-4xl mx-auto">
-
-            <input
-              type="file"
-              id="rx-upload"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files && e.target.files.length > 0) {
-                  handleFileUpload(e.target.files[0]);
-                }
-              }}
-            />
-
-            <button
-              className="p-3.5 mb-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-2xl transition-all"
-              title="Upload Prescription"
-              onClick={() => document.getElementById('rx-upload').click()}
-            >
-              <Paperclip size={22} className="rotate-45" />
-            </button>
-
-            <div className="flex-1 bg-slate-100/80 rounded-3xl p-1.5 flex items-end border border-slate-200/60 focus-within:border-blue-400 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 transition-all shadow-inner">
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendMessage();
+        {/* Input Area (Floating) */}
+        <div className="absolute bottom-6 left-0 right-0 px-4 pointer-events-none z-10">
+          <div className="max-w-4xl mx-auto bg-white rounded-3xl p-3 shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-200 pointer-events-auto flex flex-col gap-2">
+            
+            <div className="flex gap-2 items-end">
+              <input
+                type="file"
+                id="rx-upload"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 0) {
+                    handleFileUpload(e.target.files[0]);
                   }
                 }}
-                placeholder="Ask about medications or request refills..."
-                className="flex-1 bg-transparent border-none outline-none text-slate-700 placeholder:text-slate-400 min-h-[44px] max-h-[120px] py-3 px-4 resize-none text-[15px]"
-                rows={1}
               />
 
-              <div className="p-1">
-                <VoiceChat onMessage={handleSendMessage} isProcessing={isLoading} />
+              <button
+                className="p-3.5 mb-1 text-slate-400 hover:text-[#0061FF] hover:bg-blue-50 rounded-2xl transition-all flex-shrink-0"
+                title="Upload Prescription"
+                onClick={() => document.getElementById('rx-upload').click()}
+              >
+                <Paperclip size={22} className="rotate-45" />
+              </button>
+
+              <div className="flex-1 bg-slate-50 rounded-3xl p-1.5 flex items-end border border-transparent focus-within:border-[#0061FF] focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 transition-all">
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                  placeholder="Ask about medications or request refills..."
+                  className="flex-1 bg-transparent border-none outline-none text-slate-700 placeholder:text-slate-400 min-h-[44px] max-h-[120px] py-3 px-4 resize-none text-[15px]"
+                  rows={1}
+                />
+
+                <div className="p-1">
+                  <VoiceChat onMessage={handleSendMessage} isProcessing={isLoading} />
+                </div>
               </div>
+
+              <button
+                onClick={() => handleSendMessage()}
+                disabled={!input.trim() || isLoading}
+                className="p-4 mb-1 bg-[#0061FF] hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-2xl shadow-md hover:shadow-blue-600/30 transition-all flex-shrink-0 active:scale-95"
+              >
+                <Send size={20} className="ml-1" />
+              </button>
+            </div>
+            
+            <div className="text-center pb-1">
+              <span className="text-[10px] text-slate-400 font-medium">AI can make mistakes. Check important information with your doctor.</span>
             </div>
 
-            <button
-              onClick={() => handleSendMessage()}
-              disabled={!input.trim() || isLoading}
-              className="p-4 mb-1 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-2xl shadow-lg hover:shadow-blue-600/30 transition-all flex-shrink-0 active:scale-95"
-            >
-              <Send size={20} className="ml-1" />
-            </button>
-          </div>
-          <div className="text-center mt-2 pb-1">
-            <span className="text-[10px] text-slate-400 font-medium">AI can make mistakes. Check important information with your doctor.</span>
           </div>
         </div>
       </div>

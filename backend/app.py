@@ -29,9 +29,55 @@ UPLOAD_DIR = "static/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# --- FINANCIAL STATE ---
+total_revenue = 0.0
+total_profit = 0.0
+
+def add_to_financial_totals(new_sale: float):
+    global total_revenue, total_profit
+    total_revenue += new_sale
+    profit_margin = new_sale * 0.40
+    total_profit += profit_margin
+    
+    # Log the observability trace
+    trace = langfuse_client.trace_interaction("financial_update", {
+        "new_sale": new_sale,
+        "profit_added": profit_margin,
+        "new_total_revenue": total_revenue,
+        "new_total_profit": total_profit
+    })
+    if trace:
+        trace.update(tags=["financials", "real-time"])
+        trace.end()
+    
+    # Optional debug print
+    print(f"[OBSERVABILITY] Transaction detected... Updating Total Revenue by ₹{new_sale:.2f}... New Total: ₹{total_revenue:.2f}")
+
 @app.on_event("startup")
 def startup_event():
     database.init_db()
+    
+    # Initialize globals from historical data
+    global total_revenue, total_profit
+    conn = database.get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT COALESCE(SUM(total_price), 0) FROM orders")
+    base_revenue = c.fetchone()[0]
+    total_revenue = float(base_revenue)
+    total_profit = total_revenue * 0.40
+    conn.close()
+    print(f"[STARTUP] Financials Initialized - Revenue: ₹{total_revenue:.2f}, Profit: ₹{total_profit:.2f}")
+
+@app.get("/api/dashboard/summary")
+def get_live_dashboard_summary():
+    # Return real-time globals blended with database counts
+    summary = database.get_dashboard_summary()
+    return {
+        **summary,
+        "total_revenue": round(total_revenue, 2),
+        "today_revenue": round(total_revenue, 2), # UI fallback
+        "monthly_profit": round(total_profit, 2)  # Update UI to use all-time profit
+    }
 
 @app.get("/medicines")
 def get_medicines():
@@ -236,6 +282,10 @@ def agent_chat_process(request: ChatRequest):
                 if execution["status"] == "success":
                     med_names = ", ".join([m['name'] for m in safety['medicines']])
                     resp_parts.append(f"Order Placed successfully for {med_names}. Total: ₹{execution['total_price']:.2f}.")
+                    
+                    # Update global financial state
+                    add_to_financial_totals(execution['total_price'])
+                    
                     execution_data = execution
                 else:
                     resp_parts.append(f"Order failed: {execution.get('error')}.")
@@ -442,6 +492,10 @@ def update_admin_approval(approval_id: int, update: ApprovalStatusUpdate):
         execution = agents.executor.run(approved_order, user_id=approval['user_id'])
         if execution["status"] == "success":
             msg = f"Your prescription for {medicine} has been approved! Order Placed! Total: ₹{execution['total_price']}"
+            
+            # Update global financial state
+            add_to_financial_totals(execution['total_price'])
+            
             database.save_chat_message(approval['user_id'], "assistant", msg)
             langfuse_client.flush()
         else:
@@ -457,7 +511,7 @@ def update_admin_approval(approval_id: int, update: ApprovalStatusUpdate):
 
 @app.get("/api/dashboard/summary")
 def api_dashboard_summary():
-    return database.get_dashboard_summary()
+    return get_live_dashboard_summary()
 
 @app.get("/api/sales/analytics")
 def api_sales_analytics():

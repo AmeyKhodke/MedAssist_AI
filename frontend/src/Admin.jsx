@@ -1,10 +1,9 @@
 import React from 'react';
 
-// Layout Components
 import Sidebar from './components/layout/Sidebar';
 import Topbar from './components/layout/Topbar';
+import { RefreshCw } from 'lucide-react';
 
-// Dashboard Components
 import DashboardSummary from './components/dashboard/DashboardSummary';
 import SalesChart from './components/dashboard/SalesChart';
 import InventoryCharts from './components/dashboard/InventoryCharts';
@@ -12,7 +11,6 @@ import InventoryTable from './components/dashboard/InventoryTable';
 import RefillPanel from './components/dashboard/RefillPanel';
 import ObservabilityPanel from './components/dashboard/ObservabilityPanel';
 
-// Full Page Views (Mockups for Navigation)
 import InventoryView from './components/dashboard/InventoryView';
 import PrescriptionsView from './components/dashboard/PrescriptionsView';
 import PatientsView from './components/dashboard/PatientsView';
@@ -21,6 +19,7 @@ import SettingsView from './components/dashboard/SettingsView';
 
 export default function AdminDashboard({ setRole }) {
   const [activeView, setActiveView] = React.useState('dashboard');
+  const [refreshKey, setRefreshKey] = React.useState(0);
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 flex overflow-hidden">
@@ -38,31 +37,44 @@ export default function AdminDashboard({ setRole }) {
             {activeView === 'dashboard' ? (
               <>
                 {/* Header Title */}
-                <div className="mb-6 flex items-center space-x-2">
-                  <span className="text-xs font-bold text-indigo-600 tracking-wider uppercase bg-indigo-100 px-2 py-1 rounded">Live System Monitor</span>
-                </div>
-                <h1 className="text-4xl font-extrabold text-indigo-700 tracking-tight mb-2">Command Center</h1>
-                <p className="text-slate-500 font-medium mb-8 max-w-2xl">
-                  Real-time analytics, inventory management, and proactive intelligence network overview.
-                </p>
-
-                {/* Top Row: Stat Cards */}
-                <DashboardSummary />
-
-                {/* Middle Analytics Row */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
-                  <SalesChart />
-                  <InventoryCharts />
-                </div>
-
-                {/* Data & Prediction Row */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pb-6">
-                  <InventoryTable />
-                  <RefillPanel />
+                <div className="mb-6 flex justify-between items-start">
+                  <div>
+                    <div className="mb-2 flex items-center space-x-2">
+                      <span className="text-xs font-bold text-indigo-600 tracking-wider uppercase bg-indigo-100 px-2 py-1 rounded">Live System Monitor</span>
+                    </div>
+                    <h1 className="text-4xl font-extrabold text-indigo-700 tracking-tight mb-2">Command Center</h1>
+                    <p className="text-slate-500 font-medium max-w-2xl">
+                      Real-time analytics, inventory management, and proactive intelligence network overview.
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => setRefreshKey(prev => prev + 1)}
+                    className="flex items-center space-x-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg font-medium transition-colors shadow-sm active:scale-95"
+                  >
+                    <RefreshCw size={16} className={`${refreshKey > 0 ? 'animate-spin-once' : ''} text-indigo-600`} />
+                    <span>Refresh</span>
+                  </button>
                 </div>
 
-                {/* Footer: Observability Trace Log */}
-                <ObservabilityPanel />
+                <div key={refreshKey}>
+                  {/* Top Row: Stat Cards */}
+                  <DashboardSummary />
+
+                  {/* Middle Analytics Row */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
+                    <SalesChart />
+                    <InventoryCharts />
+                  </div>
+
+                  {/* Data & Prediction Row */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pb-6">
+                    <InventoryTable />
+                    <RefillPanel />
+                  </div>
+
+                  {/* Footer: Observability Trace Log */}
+                  <ObservabilityPanel />
+                </div>
               </>
             ) : activeView === 'inventory' ? (
               <InventoryView />
