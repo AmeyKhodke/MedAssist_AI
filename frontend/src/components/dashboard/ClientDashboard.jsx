@@ -1,10 +1,19 @@
 import React, { useState } from 'react';
+import PrimarySidebar from '../layout/PrimarySidebar';
 
 const ClientDashboard = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [activeTab, setActiveTab] = useState('chat');
 
   // Toggle function for children components to use
   const toggleDarkMode = () => setIsDarkMode(prev => !prev);
+
+  // Mock User Object (will come from API/Auth context eventually)
+  const user = {
+    name: 'Patient PAT001',
+    email: 'jejurkarom@gmail.com',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Patient'
+  };
 
   return (
     <div
@@ -13,21 +22,14 @@ const ClientDashboard = () => {
         isDarkMode ? 'dark bg-slate-900 text-slate-100' : 'bg-[#F8F9FB] text-slate-800'
       } h-screen overflow-hidden flex`}
     >
-      {/* 1. Primary Sidebar Placeholder */}
-      <div className="w-[64px] md:w-[256px] h-full flex flex-col bg-[#1A1C2E] text-white shrink-0 transition-all duration-300">
-        <div className="p-4 border-b border-slate-700/50">
-          <p className="text-sm text-slate-400">Primary Sidebar Placeholder</p>
-        </div>
-        <div className="flex-1"></div>
-        <div className="p-4 border-t border-slate-700/50">
-          <button 
-            onClick={toggleDarkMode}
-            className="w-full text-left p-2 rounded hover:bg-slate-800 transition-colors"
-          >
-            Toggle Dark Mode
-          </button>
-        </div>
-      </div>
+      {/* 1. Primary Sidebar */}
+      <PrimarySidebar 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        isDarkMode={isDarkMode} 
+        toggleDarkMode={toggleDarkMode}
+        user={user}
+      />
 
       {/* 2. Secondary Sidebar (Chat Sessions) Placeholder */}
       <div className="w-[280px] h-full flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-all">
