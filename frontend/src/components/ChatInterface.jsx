@@ -179,12 +179,12 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
   };
 
   return (
-    <div className="flex flex-col h-full w-full bg-[#F8F9FB] relative">
+    <div className="flex flex-col h-full w-full bg-[#F8F9FB] dark:bg-slate-900 relative">
       {/* Background Pattern */}
       <div className="absolute inset-0 z-0 opacity-[0.03] bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPgo8cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSI4IiBmaWxsPSIjMDAwIiBmaWxsLW9wYWNpdHk9IjAuMDUiPjwvcmVjdD4KPHBhdGggZD0iTTAgMEw4IDhaTTAgOEw4IDBaIiBzdHJva2U9IiMwMDAiIHN0cm9rZS1vcGFjaXR5PSIwLjA1IiBzdHJva2Utd2lkdGg9IjEiPjwvcGF0aD4KPC9zdmc+')] mix-blend-multiply"></div>
 
       {/* Header / Status Bar */}
-      <div className="bg-white/80 backdrop-blur-xl px-6 py-4 border-b border-[#E2E8F0] flex justify-between items-center relative z-10">
+      <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl px-6 py-4 border-b border-[#E2E8F0] dark:border-slate-800 flex justify-between items-center relative z-10">
         <div className="flex items-center gap-3">
           <div className="relative">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center shadow-md">
@@ -193,7 +193,7 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
             <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></div>
           </div>
           <div>
-            <h3 className="font-bold text-slate-900 leading-tight">AI Pharmacist</h3>
+            <h3 className="font-bold text-slate-900 dark:text-slate-100 leading-tight">AI Pharmacist</h3>
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-emerald-600">Online</span>
               <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
@@ -206,14 +206,14 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
         <div className="flex items-center gap-2">
           <button
             onClick={() => handleSendMessage('show my cart')}
-            className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors shadow-sm active:scale-95"
+            className="p-2 text-blue-600 bg-blue-50 dark:bg-slate-800 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-slate-700/50 rounded-xl transition-colors shadow-sm active:scale-95"
             title="View Cart"
           >
             <ShoppingCart size={20} />
           </button>
           <button
             onClick={() => setRxVerified(!rxVerified)}
-            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-full text-xs font-bold transition-colors border border-slate-200"
+            className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full text-xs font-bold transition-colors border border-slate-200 dark:border-slate-700"
           >
             Toggle Rx Mod
           </button>
@@ -242,7 +242,7 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
                   "px-5 py-3.5 shadow-sm text-[15px] leading-relaxed relative group",
                   msg.role === 'user'
                     ? "bg-[#0061FF] text-white rounded-2xl rounded-tr-sm"
-                    : "bg-[#F1F5F9] border border-[#E2E8F0] text-slate-800 rounded-2xl rounded-tl-sm"
+                    : "bg-[#F1F5F9] dark:bg-slate-800 border border-[#E2E8F0] dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-2xl rounded-tl-sm"
                 )}>
                   <div className="flex flex-col gap-1">
                     <span className={cn(
@@ -282,9 +282,9 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
 
                   {/* Pending Cart Details */}
                   {msg.status === 'pending_confirmation' && msg.metadata && msg.metadata.cart_items && (
-                    <div className="mt-4 p-4 bg-white rounded-xl border border-slate-200 shadow-sm w-full min-w-[240px]">
-                      <p className="font-bold text-slate-800 mb-3 flex items-center gap-2 text-sm">
-                        <div className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center shadow-inner">
+                    <div className="mt-4 p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm w-full min-w-[240px]">
+                      <p className="font-bold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2 text-sm">
+                        <div className="w-6 h-6 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center shadow-inner">
                           <ShoppingCart size={13} strokeWidth={2.5} />
                         </div>
                         Your Cart
@@ -292,17 +292,17 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
                       <div className="space-y-2.5">
                         {msg.metadata.cart_items.map((item, i) => (
                           <div key={i} className="flex flex-col text-sm border-l-2 border-slate-100 pl-3 py-0.5">
-                            <span className="font-semibold text-slate-800 flex items-center gap-2">
+                            <span className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
                               {item.name}
                             </span>
-                            <span className="text-slate-500 text-xs font-medium flex items-center gap-1.5 mt-0.5">
-                              Qty: <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">{item.qty}</span>
+                            <span className="text-slate-500 dark:text-slate-400 text-xs font-medium flex items-center gap-1.5 mt-0.5">
+                              Qty: <span className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-700 dark:text-slate-300">{item.qty}</span>
                             </span>
                           </div>
                         ))}
                       </div>
-                      <div className="mt-4 pt-3 border-t border-slate-200 flex justify-between items-center px-1">
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Estimated Total</span>
+                      <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-between items-center px-1">
+                        <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Estimated Total</span>
                         <span className="text-lg font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-indigo-600">₹{msg.metadata.total_price.toFixed(2)}</span>
                       </div>
                     </div>
@@ -319,7 +319,7 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
                       </button>
                       <button
                         onClick={() => handleSendMessage('No')}
-                        className="flex-1 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-bold transition-all active:scale-[0.98]"
+                        className="flex-1 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-bold transition-all active:scale-[0.98]"
                       >
                         Cancel
                       </button>
@@ -335,7 +335,7 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
 
             {isLoading && (
               <div className="flex gap-3 max-w-[85%] animate-in fade-in duration-300">
-                <div className="bg-white px-5 py-4 rounded-2xl rounded-tl-sm border border-slate-200/80 shadow-sm flex items-center gap-1.5">
+                <div className="bg-white dark:bg-slate-800 px-5 py-4 rounded-2xl rounded-tl-sm border border-slate-200/80 dark:border-slate-700 shadow-sm flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></span>
                   <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></span>
                   <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></span>
@@ -348,12 +348,12 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
           {/* Premium Cart Sidebar */}
           <div
             className={cn(
-              "absolute top-0 right-0 h-full w-[320px] bg-white/95 backdrop-blur-2xl border-l border-slate-200/60 shadow-2xl z-20 transition-transform duration-300 ease-in-out flex flex-col",
+              "absolute top-0 right-0 h-full w-[320px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl border-l border-slate-200/60 dark:border-slate-800/60 shadow-2xl z-20 transition-transform duration-300 ease-in-out flex flex-col",
               isCartOpen ? "translate-x-0" : "translate-x-full"
             )}
           >
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-blue-50/50 to-indigo-50/50">
-              <h3 className="font-bold text-slate-800 flex items-center gap-2 text-lg">
+            <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-gradient-to-r from-blue-50/50 to-indigo-50/50 dark:from-slate-800/50 dark:to-slate-900/50">
+              <h3 className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 text-lg">
                 <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg shadow-inner">
                   <ShoppingCart size={18} strokeWidth={2.5} />
                 </div>
@@ -432,7 +432,7 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
 
         {/* Input Area (Floating) */}
         <div className="absolute bottom-6 left-0 right-0 px-4 pointer-events-none z-10">
-          <div className="max-w-4xl mx-auto bg-white rounded-3xl p-3 shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-200 pointer-events-auto flex flex-col gap-2">
+          <div className="max-w-4xl mx-auto bg-white dark:bg-slate-900 rounded-3xl p-3 shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.5)] border border-slate-200 dark:border-slate-800 pointer-events-auto flex flex-col gap-2">
             
             <div className="flex gap-2 items-end">
               <input
@@ -455,7 +455,7 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
                 <Paperclip size={22} className="rotate-45" />
               </button>
 
-              <div className="flex-1 bg-slate-50 rounded-3xl p-1.5 flex items-end border border-transparent focus-within:border-[#0061FF] focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-500/10 transition-all">
+              <div className="flex-1 bg-slate-50 dark:bg-slate-800 rounded-3xl p-1.5 flex items-end border border-transparent focus-within:border-[#0061FF] dark:focus-within:border-blue-500 focus-within:bg-white dark:focus-within:bg-slate-900 focus-within:ring-4 focus-within:ring-blue-500/10 transition-all">
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
@@ -466,7 +466,7 @@ const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreate
                     }
                   }}
                   placeholder="Ask about medications or request refills..."
-                  className="flex-1 bg-transparent border-none outline-none text-slate-700 placeholder:text-slate-400 min-h-[44px] max-h-[120px] py-3 px-4 resize-none text-[15px]"
+                  className="flex-1 bg-transparent border-none outline-none text-slate-700 dark:text-slate-100 placeholder:text-slate-400 min-h-[44px] max-h-[120px] py-3 px-4 resize-none text-[15px]"
                   rows={1}
                 />
 
