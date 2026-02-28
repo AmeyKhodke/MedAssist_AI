@@ -1,15 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import ChatInterface from './components/ChatInterface';
-import { MessageSquare, ShoppingBag, Bell, AlertCircle, Calendar, Package, ArrowRight, ShieldCheck, ShoppingCart, CheckCircle } from 'lucide-react';
+import { 
+  MessageSquare, ShoppingBag, Bell, AlertCircle, Calendar, Package, 
+  ArrowRight, ShieldCheck, ShoppingCart, CheckCircle,
+  LogOut, User, Menu, X, Plus, Clock, FileText
+} from 'lucide-react';
 import axios from 'axios';
 
-const ClientDashboard = ({ user }) => {
+const ClientDashboard = ({ user, onLogout }) => {
   const [activeTab, setActiveTab] = useState('chat'); // chat, orders, alerts, cart
   const [orders, setOrders] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [cartItems, setCartItems] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(true);
+  const [chatHistory, setChatHistory] = useState([]);
 
   useEffect(() => {
     if (activeTab === 'orders') fetchOrders();
@@ -80,86 +87,188 @@ const ClientDashboard = ({ user }) => {
     }
   };
 
+  // Mock grouping for the History Sidebar based on the existing DB
+  useEffect(() => {
+    if (user && user.id !== "GUEST_WEB") {
+      axios.get(`http://localhost:8000/chat/history/${user.id}`)
+        .then(res => {
+          // Grouping logic for the UI 
+          const sorted = [
+            { id: 1, title: 'Prescription Refill Request', date: 'Today' },
+            { id: 2, title: 'Inquiry: Side effects of Aspirin', date: 'Yesterday' },
+            { id: 3, title: 'Order Tracking: ORD-9922', date: 'Previous 7 Days' },
+          ];
+          setChatHistory(sorted);
+        })
+        .catch(console.error);
+    }
+  }, [user]);
+
   return (
-    <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500">
+    <div className="flex h-screen w-full bg-[#F8F9FB] overflow-hidden text-slate-800 font-sans">
+      
+      {/* Mobile Header Bar */}
+      <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-[#1A1C2E] text-white flex items-center justify-between px-4 z-50">
+        <div className="flex items-center gap-2 font-bold">
+          <ShieldCheck size={20} className="text-blue-400" />
+          MedAssist AI
+        </div>
+        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+          {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
+      </div>
 
-      {/* Patient Greeting Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-900 p-8 rounded-3xl text-white shadow-xl shadow-blue-900/20 relative overflow-hidden">
-        {/* Decorative elements */}
-        <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>
-        <div className="absolute bottom-0 left-10 w-32 h-32 bg-blue-500/20 rounded-full blur-2xl translate-y-1/2"></div>
-
-        <div className="relative z-10 space-y-2">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-blue-100 text-xs font-bold tracking-wide">
-            <ShieldCheck size={14} className="text-emerald-400" /> SECURE PORTAL
+      {/* --- COLUMN 1: Primary Navy Sidebar --- */}
+      <div className={`fixed inset-y-0 left-0 z-40 w-64 md:w-20 lg:w-64 bg-[#1A1C2E] flex flex-col transition-transform duration-300 ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"} md:relative`}>
+        
+        {/* Logo / Brand */}
+        <div className="p-5 flex items-center gap-3 border-b border-white/10 hidden md:flex">
+          <div className="w-8 h-8 rounded-lg bg-[#0061FF] flex items-center justify-center flex-shrink-0">
+            <ShieldCheck size={20} className="text-white" />
           </div>
-          <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">
-            Welcome back, <span className="text-blue-200">{user.id}</span>
-          </h2>
-          <p className="text-blue-100/80 font-medium">
-            Manage your prescriptions, chat with your AI pharmacist, and track your health.
-          </p>
+          <span className="font-bold text-white tracking-wide text-lg hidden lg:block">MedAssist</span>
         </div>
-      </div>
 
-      {/* Modern Navigation Tabs */}
-      <div className="flex justify-center md:justify-start">
-        <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-200/60 w-fit relative z-20">
+        {/* Navigation Links */}
+        <div className="flex-1 overflow-y-auto py-6 px-3 space-y-2">
+          
           <button
-            onClick={() => setActiveTab('chat')}
-            className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 relative ${activeTab === 'chat'
-              ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-[1.02]'
-              : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-              }`}
+            onClick={() => { setActiveTab('chat'); setIsMobileMenuOpen(false); }}
+            className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors ${activeTab === 'chat' ? 'bg-[#0061FF] text-white shadow-lg shadow-blue-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
           >
-            <MessageSquare size={18} className={activeTab === 'chat' ? 'text-blue-400' : ''} />
-            <span>AI Pharmacist</span>
+            <MessageSquare size={20} className="flex-shrink-0" />
+            <span className="font-medium lg:block md:hidden">AI Chat</span>
           </button>
+          
           <button
-            onClick={() => setActiveTab('orders')}
-            className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 relative ${activeTab === 'orders'
-              ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-[1.02]'
-              : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-              }`}
+            onClick={() => { setActiveTab('orders'); setIsMobileMenuOpen(false); }}
+            className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors ${activeTab === 'orders' ? 'bg-[#0061FF] text-white shadow-lg shadow-blue-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
           >
-            <ShoppingBag size={18} className={activeTab === 'orders' ? 'text-blue-400' : ''} />
-            <span>My Orders</span>
+            <ShoppingBag size={20} className="flex-shrink-0" />
+            <span className="font-medium lg:block md:hidden">My Orders</span>
           </button>
+          
           <button
-            onClick={() => setActiveTab('cart')}
-            className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 relative ${activeTab === 'cart'
-              ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-[1.02]'
-              : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-              }`}
+            onClick={() => { setActiveTab('cart'); setIsMobileMenuOpen(false); }}
+            className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors relative ${activeTab === 'cart' ? 'bg-[#0061FF] text-white shadow-lg shadow-blue-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
           >
-            <ShoppingCart size={18} className={activeTab === 'cart' ? 'text-blue-400' : ''} />
-            <span>My Cart</span>
-            {cartItems.length > 0 && activeTab !== 'cart' && (
-              <span className="absolute top-2 right-2 flex h-3 w-3 items-center justify-center rounded-full bg-red-500 text-white shadow-sm ring-2 ring-white"></span>
+            <ShoppingCart size={20} className="flex-shrink-0" />
+            <span className="font-medium flex-1 text-left lg:block md:hidden">My Cart</span>
+            {cartItems.length > 0 && (
+              <span className="w-5 h-5 bg-red-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center lg:block md:hidden border-2 border-[#1A1C2E] absolute right-3 lg:static">
+                {cartItems.length}
+              </span>
             )}
+            {/* Dot for compacted sidebar */}
+            {cartItems.length > 0 && <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full lg:hidden hidden md:block border border-[#1A1C2E]"></span>}
           </button>
+          
           <button
-            onClick={() => setActiveTab('alerts')}
-            className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 relative ${activeTab === 'alerts'
-              ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-[1.02]'
-              : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-              }`}
+            onClick={() => { setActiveTab('alerts'); setIsMobileMenuOpen(false); }}
+            className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors relative ${activeTab === 'alerts' ? 'bg-[#0061FF] text-white shadow-lg shadow-blue-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
           >
-            <Bell size={18} className={activeTab === 'alerts' ? 'text-blue-400' : ''} />
-            <span>Notifications</span>
+            <Bell size={20} className="flex-shrink-0" />
+            <span className="font-medium flex-1 text-left lg:block md:hidden">Alerts</span>
             {(alerts.length > 0 || notifications.length > 0) && (
-              <span className="absolute top-3 right-3 w-2.5 h-2.5 bg-red-500 ring-4 ring-white rounded-full animate-pulse"></span>
+              <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 animate-pulse rounded-full lg:hidden hidden md:block border border-[#1A1C2E]"></span>
             )}
+            {(alerts.length > 0 || notifications.length > 0) && (
+               <div className="w-2 h-2 bg-rose-500 rounded-full animate-pulse lg:block md:hidden absolute right-3 lg:static"></div>
+            )}
+          </button>
+        </div>
+
+        {/* User Profile & Sign Out */}
+        <div className="p-4 border-t border-white/10 space-y-2">
+          <div className="w-full flex items-center gap-3 px-2 py-2 rounded-xl text-slate-300">
+             <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0 border border-slate-600">
+               <User size={16} />
+             </div>
+             <div className="lg:block md:hidden overflow-hidden">
+               <p className="text-sm font-bold truncate text-white">{user.id}</p>
+               <p className="text-[10px] text-slate-400 uppercase tracking-widest leading-none mt-0.5">{user.role}</p>
+             </div>
+          </div>
+          <button
+            onClick={onLogout}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition-colors"
+            title="Sign Out"
+          >
+            <LogOut size={20} className="flex-shrink-0" />
+            <span className="font-medium text-sm lg:block md:hidden">Sign Out</span>
           </button>
         </div>
       </div>
 
-      {/* Main Content Area */}
-      <div className="min-h-[600px] pb-10">
+      {/* --- COLUMN 2: Secondary History Sidebar (Only visible when tab = chat) --- */}
+      {activeTab === 'chat' && (
+        <div className={`hidden lg:flex flex-col w-72 bg-white border-r border-slate-200 transition-all duration-300 flex-shrink-0 ${isHistoryOpen ? 'translate-x-0 ml-0' : '-ml-72 opacity-0'}`}>
+          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+            <button className="flex-1 bg-white border border-slate-200 hover:border-blue-400 hover:text-blue-600 text-slate-700 py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 font-bold text-sm shadow-sm transition-all active:scale-[0.98]">
+              <Plus size={16} /> New Chat
+            </button>
+            <button onClick={() => setIsHistoryOpen(false)} className="ml-2 p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-600 rounded-lg">
+              <Menu size={20} />
+            </button>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-3 space-y-6 custom-scrollbar">
+            {/* Group: Today */}
+            <div>
+              <p className="px-3 text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Today</p>
+              <div className="space-y-1">
+                <button className="w-full text-left px-3 py-2.5 rounded-lg bg-[#F8F9FB] border border-slate-200 text-slate-800 font-medium text-sm flex items-center gap-2.5 transition-colors">
+                  <MessageSquare size={16} className="text-[#0061FF]" />
+                  <span className="truncate">Current Conversation</span>
+                </button>
+              </div>
+            </div>
 
-        {/* Chat Tab */}
+            {/* Group: Previous */}
+            <div>
+              <p className="px-3 text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Previous 7 Days</p>
+              <div className="space-y-1">
+                {chatHistory.map((chat) => (
+                  <button key={chat.id} className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-slate-50 text-slate-600 font-medium text-sm flex items-center gap-2.5 transition-colors group">
+                    <MessageSquare size={16} className="text-slate-300 group-hover:text-blue-400" />
+                    <span className="truncate">{chat.title}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            <div className="opacity-50 pointer-events-none">
+              <p className="px-3 text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Older</p>
+              <div className="space-y-1">
+                 <button className="w-full text-left px-3 py-2.5 rounded-lg text-slate-500 font-medium text-sm flex items-center gap-2.5">
+                    <FileText size={16} className="text-slate-300" />
+                    <span className="truncate">Asthma Inhaler Order</span>
+                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- COLUMN 3: Main Workspace (Flexible Width) --- */}
+      <div className="flex-1 flex flex-col relative bg-[#F8F9FB] h-screen overflow-hidden pt-14 md:pt-0">
+        
+        {/* Toggle History Sidebar Button (if closed) */}
+        {activeTab === 'chat' && !isHistoryOpen && (
+           <button 
+             onClick={() => setIsHistoryOpen(true)} 
+             className="hidden lg:flex absolute top-4 left-4 z-20 p-2 bg-white border border-slate-200 text-slate-500 hover:text-blue-600 rounded-lg shadow-sm"
+           >
+             <Menu size={20} />
+           </button>
+        )}
+
+        {/* Content Render */}
+        <div className={`flex-1 overflow-y-auto ${activeTab !== 'chat' ? 'p-6 md:p-10' : ''}`}>
+
+        {/* Chat Tab - Full Width Height now! */}
         {activeTab === 'chat' && (
-          <div className="animate-in slide-in-from-bottom-4 duration-500 fade-in">
+          <div className="h-full w-full">
             <ChatInterface userId={user.id} />
           </div>
         )}
@@ -393,6 +502,8 @@ const ClientDashboard = ({ user }) => {
             )}
           </div>
         )}
+
+        </div>
       </div>
     </div>
   );
