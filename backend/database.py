@@ -71,6 +71,16 @@ def init_db():
         )
     ''')
 
+    # Create chat_sessions table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS chat_sessions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            title TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
     # Create chat_history table
     c.execute('''
         CREATE TABLE IF NOT EXISTS chat_history (
@@ -78,7 +88,8 @@ def init_db():
             user_id TEXT,
             role TEXT,
             content TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            session_id TEXT
         )
     ''')
 
@@ -113,6 +124,11 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
+    try:
+        c.execute("ALTER TABLE chat_history ADD COLUMN session_id TEXT")
+    except sqlite3.OperationalError:
+        pass
+
     
     conn.commit()
     conn.close()
@@ -140,18 +156,46 @@ def get_notifications(user_id: str):
     conn.close()
     return [dict(row) for row in notifs]
 
-def save_chat_message(user_id: str, role: str, content: str):
+import uuid
+
+def create_chat_session(user_id: str, title: str) -> str:
     conn = get_db_connection()
-    conn.execute('INSERT INTO chat_history (user_id, role, content) VALUES (?, ?, ?)', (user_id, role, content))
+    session_id = str(uuid.uuid4())
+    conn.execute('INSERT INTO chat_sessions (id, user_id, title) VALUES (?, ?, ?)', (session_id, user_id, title))
+    conn.commit()
+    conn.close()
+    return session_id
+
+def get_chat_sessions(user_id: str):
+    conn = get_db_connection()
+    sessions = conn.execute('SELECT id, title, timestamp FROM chat_sessions WHERE user_id = ? ORDER BY timestamp DESC', (user_id,)).fetchall()
+    conn.close()
+    return [dict(row) for row in sessions]
+
+def delete_chat_session(session_id: str):
+    conn = get_db_connection()
+    conn.execute('DELETE FROM chat_sessions WHERE id = ?', (session_id,))
+    conn.execute('DELETE FROM chat_history WHERE session_id = ?', (session_id,))
+    conn.commit()
+    conn.close()
+
+def save_chat_message(user_id: str, role: str, content: str, session_id: str = None):
+    conn = get_db_connection()
+    conn.execute('INSERT INTO chat_history (user_id, role, content, session_id) VALUES (?, ?, ?, ?)', (user_id, role, content, session_id))
     conn.commit()
     conn.close()
 
 def get_chat_history(user_id: str, limit: int = 50):
+    # Fallback for legacy chats without session_id
     conn = get_db_connection()
-    history = conn.execute('SELECT role, content, timestamp FROM chat_history WHERE user_id = ? ORDER BY timestamp ASC', (user_id,)).fetchall()
+    history = conn.execute('SELECT role, content, timestamp FROM chat_history WHERE user_id = ? AND session_id IS NULL ORDER BY timestamp ASC', (user_id,)).fetchall()
     conn.close()
-    # If no history, return empty or default greeting? 
-    # Let's return actual history. Frontend can handle default greeting.
+    return [dict(row) for row in history]
+
+def get_chat_history_by_session(session_id: str):
+    conn = get_db_connection()
+    history = conn.execute('SELECT role, content, timestamp FROM chat_history WHERE session_id = ? ORDER BY timestamp ASC', (session_id,)).fetchall()
+    conn.close()
     return [dict(row) for row in history]
 
 

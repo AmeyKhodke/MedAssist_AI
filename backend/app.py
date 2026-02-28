@@ -138,7 +138,7 @@ def fulfill_webhook(payload: dict):
 import agents
 
 @app.post("/agent/upload_prescription")
-async def upload_prescription(user_id: str = Form(...), file: UploadFile = File(...)):
+async def upload_prescription(user_id: str = Form(...), session_id: Optional[str] = Form(None), file: UploadFile = File(...)):
     # Save the file
     ext = os.path.splitext(file.filename)[1]
     filename = f"{uuid.uuid4()}{ext}"
@@ -199,7 +199,7 @@ async def upload_prescription(user_id: str = Form(...), file: UploadFile = File(
     if unrecognized or extraction.get("suggestions"):
         resp += " Some items were not found in our inventory."
     
-    database.save_chat_message(user_id, "assistant", resp)
+    database.save_chat_message(user_id, "assistant", resp, session_id)
     langfuse_client.flush()
     
     return {
@@ -212,29 +212,35 @@ class ChatRequest(BaseModel):
     text: str
     user_id: Optional[str] = "GUEST"
     prescription_verified: Optional[bool] = False
+    session_id: Optional[str] = None
 
 @app.post("/agent/chat")
 def agent_chat_process(request: ChatRequest):
     user_id = request.user_id
     text = request.text.strip()
+    session_id = request.session_id
+    
+    # Auto-create session if none provided
+    if not session_id:
+        session_id = database.create_chat_session(user_id, "New Consultation")
     
     # 0. Save User Message
-    database.save_chat_message(user_id, "user", text)
+    database.save_chat_message(user_id, "user", text, session_id)
 
     # --- CONFIRMATION LOGIC ---
     # Check if user said "yes" or "confirm"
     if text.lower() in ["no", "cancel", "abort", "nevermind"]:
         resp = "Order cancelled."
-        database.save_chat_message(user_id, "assistant", resp)
-        return {"result": resp}
+        database.save_chat_message(user_id, "assistant", resp, session_id)
+        return {"result": resp, "session_id": session_id}
 
     if text.lower() in ["yes", "confirm", "ok", "sure", "please", "confirm order"]:
         # Retrieve cart from database
         cart_items = database.get_cart(user_id)
         if not cart_items:
              resp = "Your cart is currently empty."
-             database.save_chat_message(user_id, "assistant", resp)
-             return {"result": resp}
+             database.save_chat_message(user_id, "assistant", resp, session_id)
+             return {"result": resp, "session_id": session_id}
         
         conn = database.get_db_connection()
         pending_approval_meds = []
@@ -296,26 +302,26 @@ def agent_chat_process(request: ChatRequest):
             
         resp = " ".join(resp_parts)
         database.clear_cart(user_id)
-        database.save_chat_message(user_id, "assistant", resp)
+        database.save_chat_message(user_id, "assistant", resp, session_id)
         langfuse_client.flush()
         
         status = "success" if execution_data else "pending_admin" if pending_approval_meds else "rejected"
-        return {"result": resp, "status": status, "data": execution_data}
+        return {"result": resp, "status": status, "data": execution_data, "session_id": session_id}
 
     # --- SHOW CART LOGIC ---
     if text.lower() in ["show cart", "view cart", "my cart", "show my cart", "cart"]:
         cart_items = database.get_cart(user_id)
         if not cart_items:
             resp = "Your cart is empty."
-            database.save_chat_message(user_id, "assistant", resp)
-            return {"result": resp}
+            database.save_chat_message(user_id, "assistant", resp, session_id)
+            return {"result": resp, "session_id": session_id}
             
         formatted_meds = [{"name": item['medicine'], "qty": item['quantity']} for item in cart_items]
         total_est = sum(item['price'] for item in cart_items)
         med_summary = ", ".join([f"{m['qty']}x {m['name']}" for m in formatted_meds])
         
         resp = f"You have {len(formatted_meds)} items in your cart. Total approx: ₹{total_est:.2f}. Do you want to confirm?"
-        database.save_chat_message(user_id, "assistant", resp)
+        database.save_chat_message(user_id, "assistant", resp, session_id)
         langfuse_client.flush()
         return {
             "result": resp, 
@@ -323,7 +329,8 @@ def agent_chat_process(request: ChatRequest):
                 "cart_items": formatted_meds,
                 "total_price": total_est
             },
-            "status": "pending_confirmation"
+            "status": "pending_confirmation",
+            "session_id": session_id
         }
 
     # --- NORMAL ORDER FLOW ---
@@ -334,8 +341,8 @@ def agent_chat_process(request: ChatRequest):
     if not extraction["medicines"]:
         if extraction.get("error") == "gemini_rate_limit":
              resp = "Ah! I'm sorry, but my AI NLP Service has hit its Free API Rate Limit with Google Gemini. Please try again in an hour!"
-             database.save_chat_message(user_id, "assistant", resp)
-             return {"result": resp}
+             database.save_chat_message(user_id, "assistant", resp, session_id)
+             return {"result": resp, "session_id": session_id}
              
         # Check for suggestions if it seems they wanted an item
         suggestions = extraction.get("suggestions", [])
@@ -346,8 +353,8 @@ def agent_chat_process(request: ChatRequest):
             # Use the intelligent LLM answer! (Prices, Q&A, greetings)
             resp = llm_answer
             
-        database.save_chat_message(user_id, "assistant", resp)
-        return {"result": resp}
+        database.save_chat_message(user_id, "assistant", resp, session_id)
+        return {"result": resp, "session_id": session_id}
     
     # 2. Safety Check (Preliminary)
     extraction["prescription_verified"] = False # No file uploaded directly in chat yet
@@ -355,8 +362,8 @@ def agent_chat_process(request: ChatRequest):
     
     if not safety_result["approved"]:
         resp = f"{llm_answer}\nHowever, I cannot add this: {safety_result['reason']}"
-        database.save_chat_message(user_id, "assistant", resp)
-        return {"result": resp, "status": safety_result.get("status", "rejected")}
+        database.save_chat_message(user_id, "assistant", resp, session_id)
+        return {"result": resp, "status": safety_result.get("status", "rejected"), "session_id": session_id}
     
     # 3. Add Multiple Items to Cart
     conn = database.get_db_connection()
@@ -377,13 +384,37 @@ def agent_chat_process(request: ChatRequest):
     # We use the LLM's natural conversational response
     resp = llm_answer
     
-    database.save_chat_message(user_id, "assistant", resp)
+    database.save_chat_message(user_id, "assistant", resp, session_id)
     langfuse_client.flush()
     
     return {
         "result": resp,
-        "status": "cart_added"
+        "status": "cart_added",
+        "session_id": session_id
     }
+
+# --- SESSION APIs ---
+class SessionCreate(BaseModel):
+    user_id: str
+    title: str = "New Consultation"
+
+@app.post("/api/chat/sessions")
+def create_session(req: SessionCreate):
+    session_id = database.create_chat_session(req.user_id, req.title)
+    return {"session_id": session_id}
+
+@app.get("/api/chat/sessions/{user_id}")
+def get_user_sessions(user_id: str):
+    return database.get_chat_sessions(user_id)
+
+@app.delete("/api/chat/sessions/{session_id}")
+def delete_session(session_id: str):
+    database.delete_chat_session(session_id)
+    return {"status": "deleted"}
+
+@app.get("/api/chat/history/{session_id}")
+def get_history_by_session(session_id: str):
+    return database.get_chat_history_by_session(session_id)
 
 @app.get("/cart/{user_id}")
 def get_user_cart(user_id: str):

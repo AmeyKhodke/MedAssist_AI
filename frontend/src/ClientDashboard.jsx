@@ -3,7 +3,7 @@ import ChatInterface from './components/ChatInterface';
 import { 
   MessageSquare, ShoppingBag, Bell, AlertCircle, Calendar, Package, 
   ArrowRight, ShieldCheck, ShoppingCart, CheckCircle,
-  LogOut, User, Menu, X, Plus, Clock, FileText
+  LogOut, User, Menu, X, Plus, Clock, FileText, MoreHorizontal, Trash2, Share2
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -16,7 +16,9 @@ const ClientDashboard = ({ user, onLogout }) => {
   const [loading, setLoading] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(true);
-  const [chatHistory, setChatHistory] = useState([]);
+  const [chatSessions, setChatSessions] = useState([]);
+  const [activeSessionId, setActiveSessionId] = useState(null);
+  const [activeDropdown, setActiveDropdown] = useState(null);
 
   useEffect(() => {
     if (activeTab === 'orders') fetchOrders();
@@ -87,22 +89,36 @@ const ClientDashboard = ({ user, onLogout }) => {
     }
   };
 
-  // Mock grouping for the History Sidebar based on the existing DB
-  useEffect(() => {
+  const fetchSessions = () => {
     if (user && user.id !== "GUEST_WEB") {
-      axios.get(`http://localhost:8000/chat/history/${user.id}`)
-        .then(res => {
-          // Grouping logic for the UI 
-          const sorted = [
-            { id: 1, title: 'Prescription Refill Request', date: 'Today' },
-            { id: 2, title: 'Inquiry: Side effects of Aspirin', date: 'Yesterday' },
-            { id: 3, title: 'Order Tracking: ORD-9922', date: 'Previous 7 Days' },
-          ];
-          setChatHistory(sorted);
-        })
+      axios.get(`http://localhost:8000/api/chat/sessions/${user.id}`)
+        .then(res => setChatSessions(res.data))
         .catch(console.error);
     }
+  };
+
+  useEffect(() => {
+    fetchSessions();
   }, [user]);
+
+  const handleDeleteSession = async (e, sessionId) => {
+     e.stopPropagation();
+     if(window.confirm('Are you sure you want to delete this chat session?')) {
+         try {
+             await axios.delete(`http://localhost:8000/api/chat/sessions/${sessionId}`);
+             if (activeSessionId === sessionId) setActiveSessionId(null);
+             fetchSessions();
+             setActiveDropdown(null);
+         } catch(err) { console.error(err); }
+     }
+  };
+
+  const handleShareSession = (e, sessionId) => {
+     e.stopPropagation();
+     navigator.clipboard.writeText(`Check out my MedAssist Chat: http://localhost:5173/chat/${sessionId}`);
+     alert("Chat link copied to clipboard!");
+     setActiveDropdown(null);
+  };
 
   return (
     <div className="flex h-screen w-full bg-[#F8F9FB] overflow-hidden text-slate-800 font-sans">
@@ -202,9 +218,11 @@ const ClientDashboard = ({ user, onLogout }) => {
 
       {/* --- COLUMN 2: Secondary History Sidebar (Only visible when tab = chat) --- */}
       {activeTab === 'chat' && (
-        <div className={`hidden lg:flex flex-col w-72 bg-white border-r border-slate-200 transition-all duration-300 flex-shrink-0 ${isHistoryOpen ? 'translate-x-0 ml-0' : '-ml-72 opacity-0'}`}>
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-            <button className="flex-1 bg-white border border-slate-200 hover:border-blue-400 hover:text-blue-600 text-slate-700 py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 font-bold text-sm shadow-sm transition-all active:scale-[0.98]">
+        <div className={`hidden lg:flex flex-col bg-white border-r border-slate-200 transition-all duration-300 flex-shrink-0 overflow-hidden ${isHistoryOpen ? 'w-72 opacity-100' : 'w-0 opacity-0 border-r-0'}`}>
+          <div className="p-4 border-b border-slate-100 flex items-center justify-between w-72">
+            <button 
+              onClick={() => setActiveSessionId(null)}
+              className="flex-1 bg-white border border-slate-200 hover:border-blue-400 hover:text-blue-600 text-slate-700 py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 font-bold text-sm shadow-sm transition-all active:scale-[0.98]">
               <Plus size={16} /> New Chat
             </button>
             <button onClick={() => setIsHistoryOpen(false)} className="ml-2 p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-600 rounded-lg">
@@ -212,40 +230,40 @@ const ClientDashboard = ({ user, onLogout }) => {
             </button>
           </div>
           
-          <div className="flex-1 overflow-y-auto p-3 space-y-6 custom-scrollbar">
-            {/* Group: Today */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-6 custom-scrollbar w-72">
+            {/* Group: All Sessions */}
             <div>
-              <p className="px-3 text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Today</p>
+              <p className="px-3 text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Recent Sessions</p>
               <div className="space-y-1">
-                <button className="w-full text-left px-3 py-2.5 rounded-lg bg-[#F8F9FB] border border-slate-200 text-slate-800 font-medium text-sm flex items-center gap-2.5 transition-colors">
-                  <MessageSquare size={16} className="text-[#0061FF]" />
-                  <span className="truncate">Current Conversation</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Group: Previous */}
-            <div>
-              <p className="px-3 text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Previous 7 Days</p>
-              <div className="space-y-1">
-                {chatHistory.map((chat) => (
-                  <button key={chat.id} className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-slate-50 text-slate-600 font-medium text-sm flex items-center gap-2.5 transition-colors group">
-                    <MessageSquare size={16} className="text-slate-300 group-hover:text-blue-400" />
-                    <span className="truncate">{chat.title}</span>
-                  </button>
+                {chatSessions.length === 0 && (
+                  <p className="px-3 text-sm text-slate-400 italic">No past sessions yet.</p>
+                )}
+                {chatSessions.map((chat) => (
+                  <div key={chat.id} className="relative group">
+                    <button 
+                      onClick={() => setActiveSessionId(chat.id)}
+                      className={`w-full text-left px-3 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2.5 transition-colors pr-8 ${activeSessionId === chat.id ? 'bg-[#F8F9FB] border border-slate-200 text-[#0061FF]' : 'hover:bg-slate-50 text-slate-600'}`}>
+                      <MessageSquare size={16} className={activeSessionId === chat.id ? 'text-[#0061FF]' : 'text-slate-300 group-hover:text-blue-400'} />
+                      <span className="truncate flex-1">{chat.title}</span>
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === chat.id ? null : chat.id) }}
+                      className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-slate-200 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity ${activeDropdown === chat.id ? 'opacity-100 bg-slate-200 text-slate-600' : ''}`}
+                    >
+                      <MoreHorizontal size={14} />
+                    </button>
+                    
+                    {activeDropdown === chat.id && (
+                       <div className="absolute right-0 top-10 w-32 bg-white rounded-lg shadow-xl border border-slate-100 p-1 z-50 animate-in fade-in zoom-in-95 duration-200">
+                          <button onClick={(e) => handleShareSession(e, chat.id)} className="w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-md flex items-center gap-2"><Share2 size={14}/> Share</button>
+                          <button onClick={(e) => handleDeleteSession(e, chat.id)} className="w-full text-left px-3 py-2 text-sm text-rose-600 hover:bg-rose-50 rounded-md flex items-center gap-2"><Trash2 size={14}/> Delete</button>
+                       </div>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>
             
-            <div className="opacity-50 pointer-events-none">
-              <p className="px-3 text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Older</p>
-              <div className="space-y-1">
-                 <button className="w-full text-left px-3 py-2.5 rounded-lg text-slate-500 font-medium text-sm flex items-center gap-2.5">
-                    <FileText size={16} className="text-slate-300" />
-                    <span className="truncate">Asthma Inhaler Order</span>
-                 </button>
-              </div>
-            </div>
           </div>
         </div>
       )}
@@ -269,7 +287,11 @@ const ClientDashboard = ({ user, onLogout }) => {
         {/* Chat Tab - Full Width Height now! */}
         {activeTab === 'chat' && (
           <div className="h-full w-full">
-            <ChatInterface userId={user.id} />
+            <ChatInterface 
+               userId={user.id} 
+               sessionId={activeSessionId} 
+               onSessionCreated={(id) => { setActiveSessionId(id); fetchSessions(); }}
+            />
           </div>
         )}
 

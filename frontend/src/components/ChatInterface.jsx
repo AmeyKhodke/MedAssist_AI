@@ -10,7 +10,7 @@ function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
-const ChatInterface = ({ userId = "GUEST_WEB" }) => {
+const ChatInterface = ({ userId = "GUEST_WEB", sessionId = null, onSessionCreated = () => {} }) => {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -50,22 +50,28 @@ const ChatInterface = ({ userId = "GUEST_WEB" }) => {
   useEffect(() => {
     // Load history
     if (userId && userId !== "GUEST_WEB") {
-      axios.get(`http://localhost:8000/chat/history/${userId}`)
-        .then(res => {
-          const history = res.data.map(msg => ({
-            role: msg.role === 'assistant' ? 'assistant' : 'user',
-            content: msg.content,
-            type: 'text' // simplification
-          }));
-          if (history.length > 0) {
-            setMessages(prev => [prev[0], ...history]); // Keep greeting? Or replace? 
-            // Let's keep greeting at top, then history.
-          }
-        })
-        .catch(err => console.error("Failed to load history", err));
+      if (sessionId) {
+        axios.get(`http://localhost:8000/api/chat/history/${sessionId}`)
+          .then(res => {
+            const history = res.data.map(msg => ({
+              role: msg.role === 'assistant' ? 'assistant' : 'user',
+              content: msg.content,
+              type: 'text'
+            }));
+            if (history.length > 0) {
+              setMessages(history); 
+            } else {
+              setMessages([{ role: 'assistant', content: 'Hello! I am your AI Pharmacist. I can help you verify prescriptions, check stock, and place orders. How can I help you today?', type: 'text' }]);
+            }
+          })
+          .catch(err => console.error("Failed to load history", err));
+      } else {
+        // Reset for new chat
+        setMessages([{ role: 'assistant', content: 'Hello! I am your AI Pharmacist. I can help you verify prescriptions, check stock, and place orders. How can I help you today?', type: 'text' }]);
+      }
     }
     scrollToBottom();
-  }, [userId]);
+  }, [userId, sessionId]);
 
   useEffect(() => {
     scrollToBottom();
@@ -85,10 +91,14 @@ const ChatInterface = ({ userId = "GUEST_WEB" }) => {
       const response = await axios.post('http://localhost:8000/agent/chat', {
         text: text,
         user_id: userId,
-        prescription_verified: rxVerified
+        prescription_verified: rxVerified,
+        session_id: sessionId
       });
 
       const result = response.data;
+      if (!sessionId && result.session_id) {
+          onSessionCreated(result.session_id);
+      }
 
       let messageType = 'success';
       if (result.status === 'rejected') messageType = 'error';
@@ -122,6 +132,7 @@ const ChatInterface = ({ userId = "GUEST_WEB" }) => {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('user_id', userId);
+    if (sessionId) formData.append('session_id', sessionId);
 
     try {
       setMessages(prev => [...prev, {
@@ -137,6 +148,10 @@ const ChatInterface = ({ userId = "GUEST_WEB" }) => {
       });
 
       const result = response.data;
+      if (!sessionId && result.session_id) {
+          onSessionCreated(result.session_id);
+      }
+      
       setRxVerified(true);
 
       setMessages(prev => [...prev, {
