@@ -1,47 +1,30 @@
-import React, { useState, useEffect, useRef } from 'react';
-import ChatInterface from './components/ChatInterface';
+import React, { useState, useEffect } from 'react';
+import ChatInterface from './components/chat/ChatInterface';
 import { 
   MessageSquare, ShoppingBag, Bell, AlertCircle, Calendar, Package, 
-  ArrowRight, ShieldCheck, ShoppingCart, CheckCircle,
-  LogOut, User, Menu, X, Plus, Clock, FileText, MoreHorizontal, Trash2, Share2, Edit2, Moon, Sun, Camera
+  ShieldCheck, ShoppingCart, CheckCircle, ArrowRight,
+  LogOut, User, Menu, X, Plus, Clock, Moon, Sun
 } from 'lucide-react';
 import axios from 'axios';
 
 const ClientDashboard = ({ user, onLogout }) => {
-  const [activeTab, setActiveTab] = useState('chat'); // chat, orders, alerts, cart
+  const [activeTab, setActiveTab] = useState('chat'); // chat, orders, alerts, cart, profile
   const [orders, setOrders] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [cartItems, setCartItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(true);
-  const [chatSessions, setChatSessions] = useState([]);
-  const [activeSessionId, setActiveSessionId] = useState(null);
-  const [activeDropdown, setActiveDropdown] = useState(null);
-  const dropdownRef = useRef(null);
-
-  // New Features
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [editingSessionId, setEditingSessionId] = useState(null);
-  const [newTitle, setNewTitle] = useState("");
   const [userProfile, setUserProfile] = useState(null);
+  // Bumping this clears the chat view ("New Chat")
+  const [chatClearKey, setChatClearKey] = useState(0);
 
   useEffect(() => {
     if (activeTab === 'orders') fetchOrders();
     if (activeTab === 'alerts') fetchNotifications();
     if (activeTab === 'cart') fetchCart();
   }, [activeTab]);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setActiveDropdown(null);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -106,14 +89,6 @@ const ClientDashboard = ({ user, onLogout }) => {
     }
   };
 
-  const fetchSessions = () => {
-    if (user && user.id !== "GUEST_WEB") {
-      axios.get(`http://localhost:8000/api/chat/sessions/${user.id}`)
-        .then(res => setChatSessions(res.data))
-        .catch(console.error);
-    }
-  };
-
   const fetchUserProfile = async () => {
     if (user && user.id) {
        try {
@@ -126,37 +101,8 @@ const ClientDashboard = ({ user, onLogout }) => {
   };
 
   useEffect(() => {
-    fetchSessions();
     fetchUserProfile();
   }, [user]);
-
-  const handleDeleteSession = async (e, sessionId) => {
-     e.stopPropagation();
-     if(window.confirm('Are you sure you want to delete this chat session?')) {
-         try {
-             await axios.delete(`http://localhost:8000/api/chat/sessions/${sessionId}`);
-             if (activeSessionId === sessionId) setActiveSessionId(null);
-             fetchSessions();
-             setActiveDropdown(null);
-         } catch(err) { console.error(err); }
-     }
-  };
-
-  const handleRenameSubmit = async (sessionId) => {
-      if (!newTitle.trim()) { setEditingSessionId(null); return; }
-      try {
-          await axios.put(`http://localhost:8000/api/chat/sessions/${sessionId}`, { title: newTitle });
-          setEditingSessionId(null);
-          fetchSessions();
-      } catch (err) { console.error(err); }
-  };
-
-  const handleShareSession = (e, sessionId) => {
-     e.stopPropagation();
-     navigator.clipboard.writeText(`Check out my MedAssist Chat: http://localhost:5173/chat/${sessionId}`);
-     alert("Chat link copied to clipboard!");
-     setActiveDropdown(null);
-  };
 
   return (
     <div className={`flex h-screen w-full transition-colors duration-300 overflow-hidden font-sans ${isDarkMode ? 'dark text-slate-100 bg-slate-900' : 'text-slate-800 bg-[#F8F9FB]'}`}>
@@ -186,13 +132,22 @@ const ClientDashboard = ({ user, onLogout }) => {
         {/* Navigation Links */}
         <div className="flex-1 overflow-y-auto py-6 px-3 space-y-2">
           
-          <button
-            onClick={() => { setActiveTab('chat'); setIsMobileMenuOpen(false); }}
-            className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors ${activeTab === 'chat' ? 'bg-[#0061FF] text-white shadow-lg shadow-blue-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-          >
-            <MessageSquare size={20} className="flex-shrink-0" />
-            <span className="font-medium lg:block md:hidden">AI Chat</span>
-          </button>
+          <div className={`w-full flex items-center gap-1 rounded-xl transition-colors ${activeTab === 'chat' ? 'bg-[#0061FF] shadow-lg shadow-blue-500/20' : 'hover:bg-white/5'}`}>
+            <button
+              onClick={() => { setActiveTab('chat'); setIsMobileMenuOpen(false); }}
+              className={`flex-1 flex items-center gap-3 px-3 py-3 rounded-xl transition-colors ${activeTab === 'chat' ? 'text-white' : 'text-slate-400 hover:text-white'}`}
+            >
+              <MessageSquare size={20} className="flex-shrink-0" />
+              <span className="font-medium lg:block md:hidden">AI Chat</span>
+            </button>
+            <button
+              title="New Chat"
+              onClick={() => { setActiveTab('chat'); setChatClearKey(k => k + 1); setIsMobileMenuOpen(false); }}
+              className={`px-2 py-3 rounded-lg transition-colors lg:flex md:hidden flex ${activeTab === 'chat' ? 'text-white/70 hover:text-white' : 'text-slate-600 hover:text-white'}`}
+            >
+              <Plus size={16} />
+            </button>
+          </div>
           
           <button
             onClick={() => { setActiveTab('orders'); setIsMobileMenuOpen(false); }}
@@ -274,72 +229,8 @@ const ClientDashboard = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* --- COLUMN 2: Secondary History Sidebar (Only visible when tab = chat) --- */}
-      {activeTab === 'chat' && (
-        <div className={`hidden lg:flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-all duration-300 flex-shrink-0 overflow-hidden ${isHistoryOpen ? 'w-72 opacity-100' : 'w-0 opacity-0 border-r-0'}`}>
-          <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between w-72">
-            <button 
-              onClick={() => setActiveSessionId(null)}
-              className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400 text-slate-700 dark:text-slate-200 py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 font-bold text-sm shadow-sm transition-all active:scale-[0.98]">
-              <Plus size={16} /> New Chat
-            </button>
-            <button onClick={() => setIsHistoryOpen(false)} className="ml-2 p-2 text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300 rounded-lg">
-              <Menu size={20} />
-            </button>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto p-3 space-y-6 custom-scrollbar w-72">
-            {/* Group: All Sessions */}
-            <div>
-              <p className="px-3 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Recent Sessions</p>
-              <div className="space-y-1" ref={dropdownRef}>
-                {chatSessions.length === 0 && (
-                  <p className="px-3 text-sm text-slate-400 dark:text-slate-600 italic">No past sessions yet.</p>
-                )}
-                {chatSessions.map((chat) => (
-                  <div key={chat.id} className="relative group">
-                    {editingSessionId === chat.id ? (
-                        <div className={`w-full text-left px-3 py-2.5 rounded-lg border border-blue-400 bg-white dark:bg-slate-800 flex items-center gap-2.5`}>
-                           <MessageSquare size={16} className="text-[#0061FF]" />
-                           <input 
-                              type="text" 
-                              autoFocus
-                              value={newTitle} 
-                              onChange={(e) => setNewTitle(e.target.value)}
-                              onBlur={() => handleRenameSubmit(chat.id)}
-                              onKeyDown={(e) => { if (e.key === 'Enter') handleRenameSubmit(chat.id); if (e.key === 'Escape') setEditingSessionId(null); }}
-                              className="flex-1 bg-transparent outline-none text-sm text-slate-800 dark:text-slate-100"
-                           />
-                        </div>
-                    ) : (
-                        <button 
-                          onClick={() => setActiveSessionId(chat.id)}
-                          className={`w-full text-left px-3 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2.5 transition-colors pr-8 ${activeSessionId === chat.id ? 'bg-[#F8F9FB] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[#0061FF] dark:text-blue-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-600 dark:text-slate-400'}`}>
-                          <MessageSquare size={16} className={activeSessionId === chat.id ? 'text-[#0061FF] dark:text-blue-400' : 'text-slate-300 dark:text-slate-600 group-hover:text-blue-400'} />
-                          <span className="truncate flex-1">{chat.title}</span>
-                        </button>
-                    )}
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === chat.id ? null : chat.id) }}
-                      className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity ${activeDropdown === chat.id ? 'opacity-100 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300' : ''}`}
-                    >
-                      <MoreHorizontal size={14} />
-                    </button>
-                    
-                    {activeDropdown === chat.id && (
-                       <div className="absolute right-0 top-10 w-36 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-100 dark:border-slate-700 p-1 z-50 animate-in fade-in zoom-in-95 duration-200">
-                          <button onClick={(e) => { e.stopPropagation(); setEditingSessionId(chat.id); setNewTitle(chat.title); setActiveDropdown(null); }} className="w-full text-left px-3 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-md flex items-center gap-2"><Edit2 size={14}/> Rename</button>
-                          <button onClick={(e) => handleShareSession(e, chat.id)} className="w-full text-left px-3 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-md flex items-center gap-2"><Share2 size={14}/> Share</button>
-                          <button onClick={(e) => handleDeleteSession(e, chat.id)} className="w-full text-left px-3 py-2 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-md flex items-center gap-2"><Trash2 size={14}/> Delete</button>
-                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* --- COLUMN 2: Sessions sidebar removed (backend no longer has session API) ---
+          New Chat is now a button in the left primary sidebar */}
 
       {/* --- COLUMN 3: Main Workspace (Flexible Width) --- */}
       <div className={`flex-1 flex flex-col min-w-0 transition-transform duration-300 ${isMobileMenuOpen ? "translate-x-64" : "translate-x-0"} relative z-10 bg-[#F8F9FB] dark:bg-slate-900`}>
@@ -348,26 +239,19 @@ const ClientDashboard = ({ user, onLogout }) => {
           <div className="absolute inset-0 bg-black/50 z-20 md:hidden" onClick={() => setIsMobileMenuOpen(false)}></div>
         )}
 
-        {/* Global Hamburger Menu (Visible on lg when history is closed AND activeTab is chat) */}
-        {!isHistoryOpen && activeTab === 'chat' && (
-           <button 
-             onClick={() => setIsHistoryOpen(true)} 
-             className="hidden lg:flex absolute top-4 left-4 z-20 p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg shadow-sm transition-colors"
-           >
-             <Menu size={20} />
-           </button>
-        )}
+
+
 
         {/* Content Render */}
         <div className={`flex-1 overflow-y-auto ${activeTab !== 'chat' ? 'p-6 md:p-10' : ''}`}>
 
-        {/* Chat Tab - Full Width Height now! */}
+        {/* Chat Tab */}
         {activeTab === 'chat' && (
           <div className="h-full w-full">
-            <ChatInterface 
-               userId={user.id} 
-               sessionId={activeSessionId} 
-               onSessionCreated={(id) => { setActiveSessionId(id); fetchSessions(); }}
+            <ChatInterface
+               user={user}
+               isDarkMode={isDarkMode}
+               clearKey={chatClearKey}
             />
           </div>
         )}

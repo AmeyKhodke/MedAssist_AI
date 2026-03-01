@@ -60,3 +60,6 @@ README.md
 # Local History and Temp files
 .lh/
 ~$*.xlsx
+
+# User Uploads
+backend/static/uploads/

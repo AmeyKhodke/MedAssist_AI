@@ -1,6 +1,0 @@
-Patient: John Doe
-Doctor: Dr. Sarah Jenkins
-
-Prescription:
-1. 500mg Amoxicillin - 3 strips
-2. Cough Syrup - 1 bottle

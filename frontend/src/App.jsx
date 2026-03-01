@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
-import ChatInterface from './components/ChatInterface';
 import AdminDashboard from './Admin';
 import ClientDashboard from './ClientDashboard';
 import LoginPage from './LoginPage';
-import { Pill, LogOut, User } from 'lucide-react';
 
 function App() {
   const [user, setUser] = useState(() => {

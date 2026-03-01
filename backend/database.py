@@ -71,16 +71,6 @@ def init_db():
         )
     ''')
 
-    # Create chat_sessions table
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS chat_sessions (
-            id TEXT PRIMARY KEY,
-            user_id TEXT,
-            title TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-
     # Create chat_history table
     c.execute('''
         CREATE TABLE IF NOT EXISTS chat_history (
@@ -88,8 +78,7 @@ def init_db():
             user_id TEXT,
             role TEXT,
             content TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            session_id TEXT
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
 
@@ -146,30 +135,7 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
-    try:
-        c.execute("ALTER TABLE chat_history ADD COLUMN session_id TEXT")
-    except sqlite3.OperationalError:
-        pass
-
-    try:
-        c.execute("ALTER TABLE customers ADD COLUMN profile_pic_url TEXT")
-    except sqlite3.OperationalError:
-        pass
-
-    try:
-        c.execute("ALTER TABLE prescription_approvals ADD COLUMN extracted_data TEXT")
-    except sqlite3.OperationalError:
-        pass
-
-    try:
-        c.execute("ALTER TABLE prescription_approvals ADD COLUMN doctor_name TEXT DEFAULT 'Not Specified'")
-    except sqlite3.OperationalError:
-        pass
-
-    try:
-        c.execute("ALTER TABLE prescription_approvals ADD COLUMN rejection_reason TEXT")
-    except sqlite3.OperationalError:
-        pass
+    
     conn.commit()
     conn.close()
     
@@ -184,18 +150,6 @@ def get_orders_by_user(user_id: str):
     conn.close()
     return [dict(row) for row in orders]
 
-def get_user_profile(user_id: str):
-    conn = get_db_connection()
-    user = conn.execute('SELECT * FROM customers WHERE user_id = ?', (user_id,)).fetchone()
-    conn.close()
-    return dict(user) if user else None
-
-def update_user_profile_pic(user_id: str, image_url: str):
-    conn = get_db_connection()
-    conn.execute('UPDATE customers SET profile_pic_url = ? WHERE user_id = ?', (image_url, user_id))
-    conn.commit()
-    conn.close()
-
 def create_notification(user_id: str, message: str):
     conn = get_db_connection()
     conn.execute('INSERT INTO notifications (user_id, message) VALUES (?, ?)', (user_id, message))
@@ -208,52 +162,18 @@ def get_notifications(user_id: str):
     conn.close()
     return [dict(row) for row in notifs]
 
-import uuid
-
-def create_chat_session(user_id: str, title: str) -> str:
+def save_chat_message(user_id: str, role: str, content: str):
     conn = get_db_connection()
-    session_id = str(uuid.uuid4())
-    conn.execute('INSERT INTO chat_sessions (id, user_id, title) VALUES (?, ?, ?)', (session_id, user_id, title))
-    conn.commit()
-    conn.close()
-    return session_id
-
-def get_chat_sessions(user_id: str):
-    conn = get_db_connection()
-    sessions = conn.execute('SELECT id, title, timestamp FROM chat_sessions WHERE user_id = ? ORDER BY timestamp DESC', (user_id,)).fetchall()
-    conn.close()
-    return [dict(row) for row in sessions]
-
-def delete_chat_session(session_id: str):
-    conn = get_db_connection()
-    conn.execute('DELETE FROM chat_sessions WHERE id = ?', (session_id,))
-    conn.execute('DELETE FROM chat_history WHERE session_id = ?', (session_id,))
-    conn.commit()
-    conn.close()
-
-def update_chat_session_title(session_id: str, title: str):
-    conn = get_db_connection()
-    conn.execute('UPDATE chat_sessions SET title = ? WHERE id = ?', (title, session_id))
-    conn.commit()
-    conn.close()
-
-def save_chat_message(user_id: str, role: str, content: str, session_id: str = None):
-    conn = get_db_connection()
-    conn.execute('INSERT INTO chat_history (user_id, role, content, session_id) VALUES (?, ?, ?, ?)', (user_id, role, content, session_id))
+    conn.execute('INSERT INTO chat_history (user_id, role, content) VALUES (?, ?, ?)', (user_id, role, content))
     conn.commit()
     conn.close()
 
 def get_chat_history(user_id: str, limit: int = 50):
-    # Fallback for legacy chats without session_id
     conn = get_db_connection()
-    history = conn.execute('SELECT role, content, timestamp FROM chat_history WHERE user_id = ? AND session_id IS NULL ORDER BY timestamp ASC', (user_id,)).fetchall()
+    history = conn.execute('SELECT role, content, timestamp FROM chat_history WHERE user_id = ? ORDER BY timestamp ASC', (user_id,)).fetchall()
     conn.close()
-    return [dict(row) for row in history]
-
-def get_chat_history_by_session(session_id: str):
-    conn = get_db_connection()
-    history = conn.execute('SELECT role, content, timestamp FROM chat_history WHERE session_id = ? ORDER BY timestamp ASC', (session_id,)).fetchall()
-    conn.close()
+    # If no history, return empty or default greeting? 
+    # Let's return actual history. Frontend can handle default greeting.
     return [dict(row) for row in history]
 
 
@@ -387,16 +307,21 @@ def load_excel_data():
                         existing["last_quantity"] = qty
                         existing["dosage_frequency"] = dosage
             
+            # Generate a default hashed password for mock users
+            import bcrypt
+            pwd = b'password123'
+            default_hashed_pwd = bcrypt.hashpw(pwd, bcrypt.gensalt()).decode('utf-8')
+
             # Insert Customers
             cust_list = [
-                (v["user_id"], v["name"], v["phone"], v["email"], v["medicine"], v["dosage_frequency"], 
+                (v["user_id"], v["name"], v["phone"], v["email"], default_hashed_pwd, v["medicine"], v["dosage_frequency"], 
                  v["last_purchase_date"], v["last_quantity"], v["avg_monthly_usage"], v["age"], v["gender"])
                 for v in customers_map.values()
             ]
             c.executemany('''
                 INSERT OR REPLACE INTO customers 
-                (user_id, name, phone, email, medicine, dosage_frequency, last_purchase_date, last_quantity, avg_monthly_usage, age, gender)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (user_id, name, phone, email, password, medicine, dosage_frequency, last_purchase_date, last_quantity, avg_monthly_usage, age, gender)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', cust_list)
             
             # Insert Orders
@@ -590,10 +515,9 @@ def get_notifications(user_id: str):
     conn.close()
     return [dict(row) for row in notifs]
 
-def create_prescription_approval(user_id: str, medicine: str, prescription_url: str, status: str = 'pending', extracted_data: str = None, doctor_name: str = 'Not Specified'):
+def create_prescription_approval(user_id: str, medicine: str, prescription_url: str, status: str = 'pending', extracted_items: str = None, doctor_name: str = None):
     conn = get_db_connection()
-    conn.execute('INSERT INTO prescription_approvals (user_id, medicine, prescription_url, status, extracted_data, doctor_name) VALUES (?, ?, ?, ?, ?, ?)',
-                 (user_id, medicine, prescription_url, status, extracted_data, doctor_name))
+    conn.execute('INSERT INTO prescription_approvals (user_id, medicine, prescription_url, status, extracted_items, doctor_name) VALUES (?, ?, ?, ?, ?, ?)', (user_id, medicine, prescription_url, status, extracted_items, doctor_name))
     conn.commit()
     conn.close()
 
@@ -603,15 +527,9 @@ def get_all_approvals():
     conn.close()
     return [dict(row) for row in approvals]
 
-def get_all_prescriptions():
+def update_approval_status(approval_id: int, status: str):
     conn = get_db_connection()
-    prescs = conn.execute("SELECT * FROM prescription_approvals ORDER BY timestamp DESC").fetchall()
-    conn.close()
-    return [dict(row) for row in prescs]
-
-def update_approval_status(approval_id: int, status: str, rejection_reason: str = None):
-    conn = get_db_connection()
-    conn.execute('UPDATE prescription_approvals SET status = ?, rejection_reason = ? WHERE id = ?', (status, rejection_reason, approval_id))
+    conn.execute('UPDATE prescription_approvals SET status = ? WHERE id = ?', (status, approval_id))
     conn.commit()
     conn.close()
 
@@ -649,8 +567,35 @@ def create_customer(name: str, email: str, phone: str, password_hash: str, auth_
     conn.close()
     return new_id
 
+def get_all_customers():
+    conn = get_db_connection()
+    users = conn.execute("SELECT * FROM customers").fetchall()
+    conn.close()
+    return [dict(u) for u in users]
+
+def get_customer_by_id(user_id: str):
+    conn = get_db_connection()
+    user = conn.execute("SELECT * FROM customers WHERE user_id = ?", (user_id,)).fetchone()
+    conn.close()
+    return dict(user) if user else None
+
 def get_customer_by_email(email: str):
     conn = get_db_connection()
     user = conn.execute("SELECT * FROM customers WHERE email = ?", (email,)).fetchone()
     conn.close()
     return dict(user) if user else None
+
+def add_medicine(name: str, category: str, unit_price: float, stock: int):
+    conn = get_db_connection()
+    try:
+        conn.execute('''
+            INSERT INTO medicines (name, category, unit_price, stock, prescription_required)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (name, category, unit_price, stock, True)) # Defaulting to True for safety, admin can adjust if DB supports it.
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error adding medicine: {e}")
+        return False
+    finally:
+        conn.close()

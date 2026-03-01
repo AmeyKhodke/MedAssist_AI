@@ -1,11 +1,11 @@
 import json
 import re
 import os
+import langfuse_client
 
 class ChitchatAgent:
     def __init__(self):
         self.responses = {}
-        self.model_name = 'gemini-2.5-flash'
         self.load_responses()
 
     def load_responses(self):
@@ -23,12 +23,22 @@ class ChitchatAgent:
         trace = langfuse_client.trace_interaction("ChitchatAgent", text, user_id=user_id)
         
         text_lower = text.lower()
+        
+        # Reload every time? For now, yes, to allow "training" without restart
         self.load_responses() 
 
+        result_response = None
         for key, data in self.responses.items():
             for keyword in data.get("keywords", []):
                 # Use regex for whole word match
                 if re.search(r'\b' + re.escape(keyword.lower()) + r'\b', text_lower):
-                    return data["response"]
+                    result_response = data["response"]
+                    break
+            if result_response:
+                break
         
-        return None
+        if trace:
+            trace.update(output={"response": result_response})
+            trace.end()
+            
+        return result_response

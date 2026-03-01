@@ -13,6 +13,26 @@ import langfuse_client
 # Load environment variables from .env file
 load_dotenv(override=True)
 
+try:
+    from google import genai
+    from google.genai import types
+    GEMINI_AVAILABLE = True
+except ImportError:
+    GEMINI_AVAILABLE = False
+    print("WARNING: google-genai python package not found.")
+    
+# Initialize Gemini
+google_api_key = os.getenv("GOOGLE_API", "")
+try:
+    if GEMINI_AVAILABLE and google_api_key:
+        gemini_client = genai.Client(api_key=google_api_key)
+    else:
+        gemini_client = None
+except Exception as e:
+    gemini_client = None
+    print(f"Warning: Failed to initialize Gemini client: {e}")
+
+
 # We use try/except to prevent the app from crashing if groq isn't fully installed yet
 try:
     from groq import Groq
@@ -43,7 +63,7 @@ def get_medicine_catalog_data() -> str:
 
 class OrderExtractorAgent:
     def __init__(self):
-        self._medicine_names: Optional[str] = None
+        self._medicine_names: Optional[List[str]] = None
         self.client = client
         # Llama 3.3 70B is incredible for conversational parsing
         self.model_name = 'llama-3.3-70b-versatile'
@@ -67,13 +87,11 @@ class OrderExtractorAgent:
         prompt = f"""
         You are 'MedAssist AI', an intelligent and highly capable conversational pharmacy assistant.
         Your task is to parse a user's conversational text, ANSWER any questions they have based on our inventory catalog, AND handle their purchase intents.
-        The user might type in messy, unprofessional language (e.g., "i got a bad headache give me 2 packs of aspirins"), use slang, Hinglish (e.g., "bhai ek paracetamol dena", "dawae dedo"), abbreviations, phonetic spellings, or have severe typos.
-
+        
         CRITICAL INSTRUCTIONS FOR ORDER FLOW:
         1. Read the user's text. If they are asking a question (e.g. "What's the price of X?"), use the Current Inventory catalog to answer them warmly in the 'answer' field.
         2. UI WIDGET TRIGGER: If the user expresses intent to buy an item BUT DOES NOT specify an exact quantity/number (e.g. "I want Paracetamol"), you MUST NOT add it to the 'medicines' array. Instead, extract the intended inventory name into the 'pending_item_name' field so the frontend can display the Dose UI.
         3. EXPLICIT CART ADDITION: If the user EXPLICITLY provides a quantity AND a medicine name (e.g. "Please add 20 of Paracetamol to my cart" or "I want 5 Advil"), you MUST extract it directly into the 'medicines' array and SET 'pending_item_name' to null. Do not use pending_item_name if a number/quantity is present!
-        4. Handle plurals, typos, slangs, Hinglish, and mixed languages gracefully (e.g., "aspirins" -> "Aspirin", "para" -> "Paracetamol", "advils" -> "Advil", "dawae" -> medicine context). Map to exact inventory item names.
         4. If it's completely unclear or not in inventory, provide the closest match in 'suggestions'.
         
         Our Current Inventory (Name | Price | Stock | Rx Required): 
@@ -160,21 +178,21 @@ def extract_prescription_file(file_bytes: bytes, mime_type: str = "image/jpeg") 
         
     prompt = f"""
     You are an intelligent pharmacy extraction engine.
-    Your task is to parse a doctor's handwritten prescription image and identify ALL medical items, dosages, and quantities, AS WELL AS the prescribing doctor's name.
+    Your task is to parse a doctor's handwritten prescription or medical document and identify ALL medical items, dosages, and quantities.
     
     CRITICAL INSTRUCTIONS:
     1. Read the document carefully to identify the medicine name and dosage (e.g. Paracetamol 500mg).
     2. Try your best to extract every medicine mentioned.
     3. You must map what you read to the closest exact match from our Current Inventory list below. 
     4. Handle plurals, typos, and bad handwriting gracefully.
-    5. Find the prescribing doctor's name (look for 'Dr.', signatures, headers). If no distinct doctor is found, return null.
+    5. IDENTIFY THE PRESCRIBING DOCTOR. Look for names at the top or near signatures (e.g., "Dr. Smith", "Sarah Jenkins MD"). If no distinct doctor is found, return null.
     
     Current Inventory:
     {meds}
     
-    Return ONLY a raw JSON object with the exact keys below:
+    Return ONLY a raw JSON object with the following exact schema (no markdown formatting):
     {{
-        "doctor_name": "Full name of the doctor, or null if not found",
+        "doctor_name": "Extracted Doctor Name or null",
         "medicines": [
             {{
                 "name": "Exact Name From Inventory String",
@@ -185,33 +203,27 @@ def extract_prescription_file(file_bytes: bytes, mime_type: str = "image/jpeg") 
     }}
     """
     
-    if not client:
-        return {"medicines": [], "suggestions": [], "error": "Groq client not initialized"}
+    if not gemini_client:
+        return {"medicines": [], "suggestions": [], "error": "Gemini client not initialized. Ensure GOOGLE_API is set."}
 
     try:
         if mime_type.startswith("image/"):
-            # Vision Logic
-            base64_image = base64.b64encode(file_bytes).decode('utf-8')
-            image_url = f"data:{mime_type};base64,{base64_image}"
-
-            chat_completion = client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": image_url,
-                                },
-                            },
-                        ],
-                    }
-                ],
-                model="llama-3.2-11b-vision-preview",
-                temperature=0.1
+            # Vision Logic via Gemini
+            image_part = types.Part.from_bytes(
+                data=file_bytes,
+                mime_type=mime_type
             )
+            
+            response = gemini_client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=[image_part, prompt],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.1
+                )
+            )
+            raw_text = response.text.strip()
+            
         else:
             # Text/PDF Logic
             extracted_text = ""
@@ -225,52 +237,32 @@ def extract_prescription_file(file_bytes: bytes, mime_type: str = "image/jpeg") 
                 
             text_prompt = prompt + f"\n\nHere is the scraped text from the document:\n{extracted_text}"
             
-            chat_completion = client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "user",
-                        "content": text_prompt
-                    }
-                ],
-                model="llama-3.3-70b-versatile",
-                temperature=0.1,
-                response_format={"type": "json_object"}
+            # Using Gemini for text too to keep it unified
+            response = gemini_client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=text_prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.1
+                )
             )
+            raw_text = response.text.strip()
             
-        raw_text = chat_completion.choices[0].message.content.strip()
-        
         # Parse JSON robustly
         if "```json" in raw_text:
             raw_text = raw_text.split("```json")[1].split("```")[0]
         elif "```" in raw_text:
             raw_text = raw_text.split("```")[1].split("```")[0]
             
-        print("--- OCR RAW TEXT ---")
-        print(raw_text)
-        print("---------------------------")
         extracted_data = json.loads(raw_text.strip())
-        
-        # Sometimes models use title case for keys, let's parse safely
-        doc_name = extracted_data.get("doctor_name") or extracted_data.get("DoctorName") or extracted_data.get("Doctor_Name") or "Unknown Doctor"
-        
         result = {
-            "doctor_name": doc_name,
+            "doctor_name": extracted_data.get("doctor_name", None),
             "medicines": extracted_data.get("medicines", []),
             "suggestions": extracted_data.get("suggestions", [])
         }
-        if trace:
-             trace.update(output=result)
-             trace.end()
-        return result
-        
     except Exception as e:
-        print(f"Groq Parsing Failed: {e}")
-        result = {
-            "doctor_name": "Unknown Doctor",
-            "medicines": [],
-            "suggestions": [],
-            "error": str(e)
-        }
+        print(f"Gemini Parsing Failed: {e}")
+        result = {"doctor_name": None, "medicines": [], "suggestions": [], "error": str(e)}
 
     if trace:
         trace.update(output=result)

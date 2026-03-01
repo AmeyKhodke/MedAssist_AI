@@ -1,110 +1,90 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { ShieldCheck, Info, Search } from 'lucide-react';
-import { clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { Search } from 'lucide-react';
 
-function cn(...inputs) {
-  return twMerge(clsx(inputs));
-}
-
-export default function InventoryTable() {
+export default function InventoryTable({ isDarkMode = false }) {
   const [inventory, setInventory] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [loading, setLoading]     = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
 
-  useEffect(() => {
-    fetchInventory();
-  }, []);
+  useEffect(() => { fetchInventory(); }, []);
 
   const fetchInventory = async () => {
     try {
       const res = await axios.get('http://localhost:8000/api/inventory');
       setInventory(res.data);
-      setLoading(false);
-    } catch (err) {
-      console.error("Error fetching inventory", err);
-      setLoading(false);
-    }
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
   };
 
-  if (loading) return <div className="h-64 bg-slate-100 animate-pulse rounded-2xl w-full"></div>;
+  const card    = isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100';
+  const header  = isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-[#F8FAFC] border-slate-100';
+  const thTxt   = isDarkMode ? 'text-slate-400' : 'text-slate-500';
+  const rowHov  = isDarkMode ? 'hover:bg-slate-700/50' : 'hover:bg-slate-50';
+  const divider = isDarkMode ? 'divide-slate-700' : 'divide-slate-100';
+  const nameTxt = isDarkMode ? 'text-slate-100' : 'text-slate-800';
+  const qtyTxt  = isDarkMode ? 'text-slate-200' : 'text-slate-700';
+  const inputCls = isDarkMode
+    ? 'bg-slate-700 border-slate-600 text-slate-100 placeholder-slate-400 focus:border-indigo-500'
+    : 'bg-slate-50 border-slate-200 text-slate-800 focus:border-indigo-500';
 
-  const filteredInventory = inventory.filter(item => 
-    item.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  if (loading) return <div className={`h-64 animate-pulse rounded-2xl w-full ${isDarkMode ? 'bg-slate-700' : 'bg-slate-100'}`} />;
+
+  const filtered = inventory.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col col-span-1 lg:col-span-8 h-96">
-      <div className="px-6 py-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white z-10 sticky top-0 gap-4">
+    <div className={`rounded-2xl shadow-sm border overflow-hidden flex flex-col col-span-1 lg:col-span-12 h-96 transition-colors ${card}`}>
+      <div className={`px-6 py-5 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center sticky top-0 gap-4 ${header}`}>
         <div>
-          <h2 className="text-lg font-bold text-slate-800">Medicine Inventory</h2>
-          <p className="text-sm text-slate-500">Live monitoring of {inventory.length} SKUs</p>
+          <h2 className={`text-lg font-bold ${isDarkMode ? 'text-slate-100' : 'text-slate-800'}`}>Medicine Inventory</h2>
+          <p className={`text-sm ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Live monitoring of {inventory.length} SKUs</p>
         </div>
         <div className="relative w-full sm:w-64">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Search size={16} className="text-slate-400" />
-          </div>
+          <Search size={16} className={`absolute left-3 top-1/2 -translate-y-1/2 ${isDarkMode ? 'text-slate-400' : 'text-slate-400'}`} />
           <input
             type="text"
-            className="bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-10 p-2 transition-colors outline-none"
+            className={`border text-sm rounded-lg block w-full pl-10 p-2 outline-none transition-colors ${inputCls}`}
             placeholder="Search medications..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={e => setSearchTerm(e.target.value)}
           />
         </div>
       </div>
-      
-      <div className="overflow-y-auto flex-1 p-0 hide-scrollbar">
-        <table className="w-full text-left text-sm text-slate-600">
-          <thead className="bg-[#F8FAFC] text-xs uppercase font-semibold text-slate-500 sticky top-0 z-10">
+      <div className="overflow-y-auto flex-1">
+        <table className="w-full text-left text-sm">
+          <thead className={`text-xs uppercase font-semibold sticky top-0 z-10 ${thTxt} ${header}`}>
             <tr>
               <th className="px-6 py-4">Medication Name</th>
               <th className="px-6 py-4">Status</th>
               <th className="px-6 py-4 text-right">Quantity</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filteredInventory.map((item, idx) => {
-              let statusColor = "bg-rose-100 text-rose-700 border-rose-200"; // Out of Stock default
-              let dotColor = "bg-rose-500";
-              
-              if (item.status === 'In Stock') {
-                statusColor = "bg-emerald-100 text-emerald-700 border-emerald-200";
-                dotColor = "bg-emerald-500";
-              } else if (item.status === 'Low Stock' || item.stock > 0 && item.stock <= item.reorder_threshold) {
-                statusColor = "bg-amber-100 text-amber-700 border-amber-200";
-                dotColor = "bg-amber-500";
-              }
-
+          <tbody className={`divide-y ${divider}`}>
+            {filtered.map((item, idx) => {
+              const statusColor = item.status === 'In Stock'
+                ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                : item.status === 'Low Stock'
+                  ? 'bg-amber-100 text-amber-700 border-amber-200'
+                  : 'bg-rose-100 text-rose-700 border-rose-200';
+              const dotColor = item.status === 'In Stock' ? 'bg-emerald-500' : item.status === 'Low Stock' ? 'bg-amber-500' : 'bg-rose-500';
               return (
-                <tr key={idx} className="hover:bg-slate-50 transition-colors group">
-                  <td className="px-6 py-4">
-                    <div className="font-bold text-slate-800 line-clamp-1" title={item.name}>{item.name}</div>
-                  </td>
+                <tr key={idx} className={`transition-colors ${rowHov}`}>
+                  <td className={`px-6 py-4 font-bold line-clamp-1 ${nameTxt}`} title={item.name}>{item.name}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={cn(
-                      "text-[10px] font-bold px-2 py-1 rounded inline-flex items-center border",
-                      statusColor
-                    )}>
-                      <span className={cn("w-1.5 h-1.5 rounded-full mr-1.5", dotColor)}></span>
-                      {item.status}
+                    <span className={`text-[10px] font-bold px-2 py-1 rounded inline-flex items-center border ${statusColor}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${dotColor}`} />{item.status}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right">
-                    <div className="flex items-baseline justify-end space-x-1">
-                      <span className="text-base font-extrabold text-slate-700">{item.stock}</span>
-                    </div>
+                    <span className={`text-base font-extrabold ${qtyTxt}`}>{item.stock}</span>
                   </td>
                 </tr>
               );
             })}
-            {filteredInventory.length === 0 && (
-              <tr>
-                <td colSpan="3" className="px-6 py-8 text-center text-slate-400">
-                  {inventory.length === 0 ? "No inventory found" : "No medications match your search"}
-                </td>
-              </tr>
+            {filtered.length === 0 && (
+              <tr><td colSpan="3" className={`px-6 py-8 text-center ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                {inventory.length === 0 ? 'No inventory found' : 'No medications match your search'}
+              </td></tr>
             )}
           </tbody>
         </table>
