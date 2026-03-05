@@ -144,7 +144,7 @@ const ChatInterface = ({ user = null, isDarkMode = false, clearKey = 0 }) => {
       }]);
 
       // Voice Output
-      speak(result.result);
+      speak(result.result, language);
 
     } catch (error) {
       setMessages(prev => [...prev, {

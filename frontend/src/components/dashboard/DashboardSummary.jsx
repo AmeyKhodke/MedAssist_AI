@@ -3,10 +3,15 @@ import { AlertCircle, TrendingUp, ShoppingBag, BarChart2 } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import axios from 'axios';
 
-export default function DashboardSummary({ isDarkMode = false }) {
-  const [data, setData] = useState(null);
-  const [salesTrend, setSalesTrend] = useState([]);
-  const [loading, setLoading] = useState(true);
+const FILTER_LABELS = {
+  '7days': 'Last 7 days',
+  'month': 'This month',
+  'year':  'This year',
+};
+
+export default function DashboardSummary({ isDarkMode = false, salesData = null, activeFilter = 'year' }) {
+  const [data, setData]           = useState(null);
+  const [loading, setLoading]     = useState(true);
 
   useEffect(() => {
     fetchData();
@@ -14,13 +19,8 @@ export default function DashboardSummary({ isDarkMode = false }) {
 
   const fetchData = async () => {
     try {
-      const [summaryRes, salesRes] = await Promise.all([
-        axios.get('http://localhost:8000/api/dashboard/summary'),
-        axios.get('http://localhost:8000/api/sales/analytics')
-      ]);
+      const summaryRes = await axios.get('http://localhost:8000/api/dashboard/summary');
       setData(summaryRes.data);
-      // Use last 7 data points for sparklines
-      setSalesTrend(salesRes.data.slice(-7));
     } catch (err) {
       console.error("Error fetching dashboard summary", err);
     } finally {
@@ -36,8 +36,22 @@ export default function DashboardSummary({ isDarkMode = false }) {
     </div>
   );
 
-  const profitTrend = salesTrend.map(d => ({ value: d.total_profit }));
-  const revenueTrend = salesTrend.map(d => ({ value: d.total_sales }));
+  // Compute revenue & profit from filtered sales data when available
+  const filteredRevenue = salesData && salesData.length > 0
+    ? salesData.reduce((sum, d) => sum + (d.total_sales  || 0), 0)
+    : null;
+  const filteredProfit = salesData && salesData.length > 0
+    ? salesData.reduce((sum, d) => sum + (d.total_profit || 0), 0)
+    : null;
+
+  const displayRevenue = filteredRevenue !== null ? filteredRevenue : (data?.total_revenue ?? data?.today_revenue ?? 0);
+  const displayProfit  = filteredProfit  !== null ? filteredProfit  : (data?.monthly_profit ?? 0);
+
+  const sparkData    = (salesData && salesData.length > 0 ? salesData : []).slice(-7);
+  const revenueTrend = sparkData.map(d => ({ value: d.total_sales  }));
+  const profitTrend  = sparkData.map(d => ({ value: d.total_profit }));
+
+  const filterLabel = FILTER_LABELS[activeFilter] || 'Selected period';
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 mt-6">
@@ -57,18 +71,18 @@ export default function DashboardSummary({ isDarkMode = false }) {
         sparkData={Array.from({ length: 7 }, (_, i) => ({ value: Math.max(0, 5 - i) }))}
       />
       <KPICard isDarkMode={isDarkMode}
-        title="Total Revenue"
-        value={`₹${Number(data?.total_revenue ?? data?.today_revenue ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+        title="Revenue"
+        value={`₹${Number(displayRevenue).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
         icon={<TrendingUp size={24} className="text-emerald-500" />}
-        trend="From all orders" trendUp={true}
+        trend={filterLabel} trendUp={true}
         colorClass="bg-[#D1FAE5]" strokeColor="#10B981" textColor="text-[#047857]"
         sparkData={revenueTrend.length ? revenueTrend : Array.from({ length: 7 }, (_, i) => ({ value: 10 + i * 5 }))}
       />
       <KPICard isDarkMode={isDarkMode}
-        title="Monthly Profit"
-        value={`₹${Number(data?.monthly_profit ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+        title="Profit"
+        value={`₹${Number(displayProfit).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
         icon={<BarChart2 size={24} className="text-purple-500" />}
-        trend="This month (40% margin)" trendUp={true}
+        trend={`${filterLabel} (40% margin)`} trendUp={true}
         colorClass="bg-[#F3E8FF]" strokeColor="#A855F7" textColor="text-[#7E22CE]"
         sparkData={profitTrend.length ? profitTrend : Array.from({ length: 7 }, (_, i) => ({ value: 5 + i * 3 }))}
       />

@@ -104,10 +104,8 @@ const LoginPage = ({ onLogin }) => {
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPgo8cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSI4IiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuMDUiPjwvcmVjdD4KPHBhdGggZD0iTTAgMEw4IDhaTTAgOEw4IDBaIiBzdHJva2U9IiNmZmYiIHN0cm9rZS1vcGFjaXR5PSIwLjA1IiBzdHJva2Utd2lkdGg9IjEiPjwvcGF0aD4KPC9zdmc+')] opacity-30 mix-blend-overlay"></div>
 
         {/* Logo Area */}
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="w-14 h-14 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center border border-white/20 shadow-2xl">
-            <Pill className="text-white w-8 h-8" />
-          </div>
+        <div className="relative z-10 flex items-center gap-4">
+          <img src="/logo.png" alt="MedAssist AI" className="w-14 h-14 rounded-2xl object-cover shadow-2xl border border-white/20" />
           <span className="text-3xl font-bold tracking-tight text-white flex items-center gap-2">
             MedAssist <span className="text-blue-400 font-light">AI</span>
           </span>
@@ -160,9 +158,7 @@ const LoginPage = ({ onLogin }) => {
           
           {/* Mobile Logo Only */}
           <div className="lg:hidden flex justify-center mb-8">
-             <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/20 text-white">
-                <Pill size={32} />
-             </div>
+            <img src="/logo.png" alt="MedAssist AI" className="w-16 h-16 rounded-2xl object-cover shadow-lg shadow-blue-600/20" />
           </div>
 
           <div className="text-center sm:text-left space-y-2 mb-8">

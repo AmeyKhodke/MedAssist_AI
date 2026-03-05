@@ -52,9 +52,10 @@ const VoiceChat = ({ onMessage, isProcessing }) => {
   );
 };
 
-export const speak = (text) => {
+export const speak = (text, lang = 'en-US') => {
   if ('speechSynthesis' in window) {
     const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = lang;
     window.speechSynthesis.speak(utterance);
   }
 };

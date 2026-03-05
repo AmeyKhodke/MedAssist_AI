@@ -21,8 +21,8 @@ const PrimarySidebar = ({ activeTab, setActiveTab, isDarkMode, toggleDarkMode, u
     <div className="w-[64px] md:w-[256px] h-full flex flex-col bg-[#1A1C2E] text-white shrink-0 transition-all duration-300 relative">
       {/* Header / Logo */}
       <div className="h-16 flex items-center px-4 mb-6 shrink-0 border-b border-slate-700/50">
-        <div className="flex items-center gap-3 text-blue-400">
-          <Pill size={28} className="shrink-0" />
+        <div className="flex items-center gap-3">
+          <img src="/logo.png" alt="MedAssist AI" className="w-9 h-9 rounded-lg object-cover shrink-0" />
           <span className="font-bold text-xl hidden md:block text-white tracking-wide">
             MedAssist
           </span>

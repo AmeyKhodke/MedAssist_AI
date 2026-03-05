@@ -42,8 +42,8 @@ class ProactiveRefillAgent:
             expiry_date = last_date + timedelta(days=days_supply)
             days_until_refill = (expiry_date - today).days
             
-            # Logic: Alert if running low (< 5 days left)
-            if days_until_refill <= 5:
+            # Logic: Alert if running low (<= 2 days left)
+            if days_until_refill <= 2:
                 # Verify we aren't suggesting too early?
                 msg = f"Refill due in {days_until_refill} days"
                 if days_until_refill < 0:

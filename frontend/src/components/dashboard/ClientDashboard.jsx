@@ -201,9 +201,10 @@ function OrdersView({ userId, isDarkMode }) {
 }
 
 // ─── Alerts Tab ──────────────────────────────────────────────────────────────
-function AlertsView({ userId, isDarkMode }) {
+function AlertsView({ userId, isDarkMode, setActiveTab }) {
   const [notifs, setNotifs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refillingStore, setRefillingStore] = useState({});
   const card  = isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-100' : 'bg-white border-slate-200 text-slate-800';
   const sub   = isDarkMode ? 'text-slate-400' : 'text-slate-500';
 
@@ -215,12 +216,27 @@ function AlertsView({ userId, isDarkMode }) {
           axios.get(`http://localhost:8000/agent/alerts?user_id=${userId}`)
         ]);
         const notifItems = (notifRes.data || []).map(n => ({ ...n, kind: 'notification' }));
-        const alertItems = (alertRes.data || []).map(a => ({ ...a, kind: 'alert', message: `Refill reminder: ${a.medicine} — ${a.days_since_purchase || 0}d since last purchase` }));
+        const alertItems = (alertRes.data || []).map(a => ({ ...a, kind: 'alert', message: `Refill reminder: ${a.medicine} — ${a.days_remaining || 0}d remaining` }));
         setNotifs([...notifItems, ...alertItems]);
       } catch { setNotifs([]); }
       finally { setLoading(false); }
     })();
   }, [userId]);
+
+  const handleRefill = async (alertIndex, medicine) => {
+    setRefillingStore(prev => ({ ...prev, [alertIndex]: 'loading' }));
+    try {
+      await axios.post(`http://localhost:8000/cart/${userId}/refill`, { medicine });
+      setRefillingStore(prev => ({ ...prev, [alertIndex]: 'success' }));
+      setTimeout(() => {
+        setRefillingStore(prev => ({ ...prev, [alertIndex]: null }));
+        if (setActiveTab) setActiveTab('cart');
+      }, 1000);
+    } catch {
+      setRefillingStore(prev => ({ ...prev, [alertIndex]: 'error' }));
+      setTimeout(() => setRefillingStore(prev => ({ ...prev, [alertIndex]: null })), 3000);
+    }
+  };
 
   if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"/></div>;
 
@@ -239,7 +255,7 @@ function AlertsView({ userId, isDarkMode }) {
       ) : (
         <div className="space-y-3">
           {notifs.map((n, i) => (
-            <div key={i} className={`flex gap-3 p-4 rounded-xl border shadow-sm ${card}`}>
+            <div key={i} className={`flex gap-3 p-4 rounded-xl border shadow-sm ${card} items-center`}>
               <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${n.kind === 'alert' ? 'bg-amber-100' : 'bg-blue-100'}`}>
                 {n.kind === 'alert' ? <AlertTriangle size={18} className="text-amber-500"/> : <Bell size={18} className="text-blue-500"/>}
               </div>
@@ -247,6 +263,30 @@ function AlertsView({ userId, isDarkMode }) {
                 <p className="text-sm font-medium leading-snug">{n.message}</p>
                 {n.timestamp && <p className={`text-xs mt-1 ${sub}`}>{new Date(n.timestamp).toLocaleString('en-IN')}</p>}
               </div>
+
+              {n.kind === 'alert' && n.medicine && (
+                <div className="shrink-0 ml-4">
+                  <button
+                    onClick={() => handleRefill(i, n.medicine)}
+                    disabled={!!refillingStore[i]}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${
+                      refillingStore[i] === 'success' ? 'bg-emerald-100 text-emerald-700' :
+                      refillingStore[i] === 'error' ? 'bg-red-100 text-red-700' :
+                      'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'
+                    }`}
+                  >
+                    {refillingStore[i] === 'loading' ? (
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : refillingStore[i] === 'success' ? (
+                      <><CheckCircle size={16}/> Added</>
+                    ) : refillingStore[i] === 'error' ? (
+                      <><XCircle size={16}/> Error</>
+                    ) : (
+                      <><ShoppingCart size={16}/> Refill Now</>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -369,7 +409,7 @@ const ClientDashboard = () => {
       case 'orders':
         return <div className="flex-1 overflow-y-auto"><OrdersView userId={USER.id} isDarkMode={isDarkMode}/></div>;
       case 'alerts':
-        return <div className="flex-1 overflow-y-auto"><AlertsView userId={USER.id} isDarkMode={isDarkMode}/></div>;
+        return <div className="flex-1 overflow-y-auto"><AlertsView userId={USER.id} isDarkMode={isDarkMode} setActiveTab={setActiveTab}/></div>;
       case 'profile':
         return <div className="flex-1 overflow-y-auto"><ProfileView user={USER} isDarkMode={isDarkMode}/></div>;
       default:

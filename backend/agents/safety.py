@@ -26,8 +26,17 @@ class SafetyCheckerAgent:
             
             # Stock Check
             if row['stock'] < qty:
+                # Create a restock request for the admin
+                database.create_restock_request(user_id, med_name, qty, row['stock'])
+                # Notify the admin
+                database.create_notification("ADMIN", f"URGENT RESTOCK: Patient ({user_id}) requested {qty}x {med_name}, but only {row['stock']} are in stock.")
+                
                 conn.close()
-                result = {"approved": False, "reason": f"Insufficient stock for {med_name}. Available: {row['stock']}"}
+                result = {
+                    "approved": False, 
+                    "reason": f"Insufficient stock for {med_name}. A restock request has been automatically sent to the pharmacy admin. You will be notified when it is available!",
+                    "status": "pending_restock"
+                }
                 if trace: trace.end()
                 return result
             

@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Users, Package, Settings, LogOut, FileText, Activity, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, Users, Package, Settings, LogOut, FileText, Activity, Sun, Moon, BellRing } from 'lucide-react';
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -14,7 +14,8 @@ export default function Sidebar({ setRole, activeView, setActiveView, isDarkMode
     { id: 'dashboard', icon: <LayoutDashboard size={20} />, label: "Dashboard" },
     { id: 'inventory', icon: <Package size={20} />, label: "Inventory" },
     { id: 'prescriptions', icon: <FileText size={20} />, label: "Prescriptions" },
-    { id: 'patients', icon: <Users size={20} />, label: "Patients" }
+    { id: 'patients', icon: <Users size={20} />, label: "Patients" },
+    { id: 'alerts', icon: <BellRing size={20} />, label: "Alerts" }
   ];
 
   const systemItems = [
@@ -27,9 +28,11 @@ export default function Sidebar({ setRole, activeView, setActiveView, isDarkMode
     <aside className={`hidden md:flex fixed left-0 top-0 h-screen w-64 ${sidebarBg} text-white flex-col items-start px-4 py-6 border-r shadow-xl z-50 transition-colors duration-300`}>
       {/* Logo */}
       <div className="w-full mb-8 px-2 flex items-center space-x-3">
-        <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-lg shadow-indigo-600/20">
-          <Activity className="w-6 h-6 text-white" />
-        </div>
+        <img
+          src="/logo.png"
+          alt="MedAssist AI Logo"
+          className="w-10 h-10 rounded-lg object-cover flex-shrink-0 shadow-lg"
+        />
         <div>
           <h2 className="text-xl font-bold tracking-tight text-white leading-tight">MedAssist AI</h2>
           <p className="text-xs text-indigo-300 font-medium tracking-wider uppercase">Enterprise</p>

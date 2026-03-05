@@ -188,7 +188,8 @@ def fulfill_webhook(payload: dict):
 import agents
 
 @app.post("/agent/upload_prescription")
-async def upload_prescription(user_id: str = Form(...), file: UploadFile = File(...)):
+async def upload_prescription(user_id: str = Form(...), session_id: Optional[str] = Form(None), file: UploadFile = File(...)):
+    session_id = session_id or str(uuid.uuid4())
     # Save the file
     ext = os.path.splitext(file.filename)[1]
     filename = f"{uuid.uuid4()}{ext}"
@@ -269,11 +270,11 @@ async def upload_prescription(user_id: str = Form(...), file: UploadFile = File(
         if unrecognized or extraction.get("suggestions"):
             resp += " Some items were not found in our inventory."
     
-    database.save_chat_message(user_id, "assistant", resp)
+    database.save_chat_message(user_id, "assistant", resp, session_id)
     langfuse_client.flush()
     
     return {
-        "result": resp,
+        "session_id": session_id, "result": resp,
         "prescription_url": file_url,
         "added_meds": added_meds
     }
@@ -283,11 +284,15 @@ class ChatRequest(BaseModel):
     user_id: Optional[str] = "GUEST"
     prescription_verified: Optional[bool] = False
     language: Optional[str] = "en-IN"
+    session_id: Optional[str] = None
+
+import uuid
 
 @app.post("/agent/chat")
 def agent_chat_process(request: ChatRequest):
     user_id = request.user_id
     raw_text = request.text.strip()
+    session_id = request.session_id or str(uuid.uuid4())
     
     # --- TRANSLATION MIDDLEWARE: INBOUND ---
     # Translate incoming text to English (en-IN)
@@ -297,15 +302,17 @@ def agent_chat_process(request: ChatRequest):
     detected_source_lang = t_in.get("detected_source", "en-IN")
     
     # Fallback to English if detector got confused or failed
-    if not detected_source_lang or detected_source_lang == "Unknown":
+    if not detected_source_lang or detected_source_lang == "Unknown" or detected_source_lang == "auto":
         detected_source_lang = "en-IN"
         
     print(f"[LANG] Detected: {detected_source_lang} | Original: '{raw_text}' | English: '{text}'")
 
     target_out_lang = request.language
+    if target_out_lang == "auto":
+        target_out_lang = detected_source_lang
 
     # 0. Save User Message
-    database.save_chat_message(user_id, "user", raw_text)
+    database.save_chat_message(user_id, "user", raw_text, session_id)
 
     # Helper function to Translate Outbound
     def format_outbound_response(english_resp: str):
@@ -318,16 +325,16 @@ def agent_chat_process(request: ChatRequest):
     # Check if user said "yes" or "confirm"
     if text.lower() in ["no", "cancel", "abort", "nevermind"]:
         resp = format_outbound_response("Order cancelled.")
-        database.save_chat_message(user_id, "assistant", resp)
-        return {"result": resp}
+        database.save_chat_message(user_id, "assistant", resp, session_id)
+        return {"session_id": session_id, "result": resp}
 
     if text.lower() in ["yes", "confirm", "ok", "sure", "please", "confirm order"]:
         # Retrieve cart from database
         cart_items = database.get_cart(user_id)
         if not cart_items:
              resp = format_outbound_response("Your cart is currently empty.")
-             database.save_chat_message(user_id, "assistant", resp)
-             return {"result": resp}
+             database.save_chat_message(user_id, "assistant", resp, session_id)
+             return {"session_id": session_id, "result": resp}
         
         conn = database.get_db_connection()
         pending_approval_meds = []
@@ -390,19 +397,19 @@ def agent_chat_process(request: ChatRequest):
         final_english_resp = " ".join(resp_parts)
         resp = format_outbound_response(final_english_resp)
         database.clear_cart(user_id)
-        database.save_chat_message(user_id, "assistant", resp)
+        database.save_chat_message(user_id, "assistant", resp, session_id)
         langfuse_client.flush()
         
         status = "success" if execution_data else "pending_admin" if pending_approval_meds else "rejected"
-        return {"result": resp, "status": status, "data": execution_data}
+        return {"session_id": session_id, "result": resp, "status": status, "data": execution_data}
 
     # --- SHOW CART LOGIC ---
     if text.lower() in ["show cart", "view cart", "my cart", "show my cart", "cart"]:
         cart_items = database.get_cart(user_id)
         if not cart_items:
             resp = format_outbound_response("Your cart is empty.")
-            database.save_chat_message(user_id, "assistant", resp)
-            return {"result": resp}
+            database.save_chat_message(user_id, "assistant", resp, session_id)
+            return {"session_id": session_id, "result": resp}
             
         formatted_meds = [{"name": item['medicine'], "qty": item['quantity']} for item in cart_items]
         total_est = sum(item['price'] for item in cart_items)
@@ -410,10 +417,10 @@ def agent_chat_process(request: ChatRequest):
         
         eng_resp = f"You have {len(formatted_meds)} items in your cart. Total approx: ₹{total_est:.2f}. Do you want to confirm?"
         resp = format_outbound_response(eng_resp)
-        database.save_chat_message(user_id, "assistant", resp)
+        database.save_chat_message(user_id, "assistant", resp, session_id)
         langfuse_client.flush()
         return {
-            "result": resp, 
+            "session_id": session_id, "result": resp, 
             "data": {
                 "cart_items": formatted_meds,
                 "total_price": total_est
@@ -428,16 +435,16 @@ def agent_chat_process(request: ChatRequest):
     if not extraction["medicines"]:
         if extraction.get("error") == "groq_rate_limit":
              resp = format_outbound_response("Ah! I'm sorry, but my AI NLP Service has hit its Free API Rate Limit with Groq APIs. Please try again in an hour!")
-             database.save_chat_message(user_id, "assistant", resp)
-             return {"result": resp}
+             database.save_chat_message(user_id, "assistant", resp, session_id)
+             return {"session_id": session_id, "result": resp}
              
         # Check if the AI identified an item the user wants to buy but needs quantity confirmation
         if extraction.get("pending_item_name"):
              item_name = extraction["pending_item_name"]
              resp = format_outbound_response(llm_answer) # Should be "How much X do you need?"
-             database.save_chat_message(user_id, "assistant", resp)
+             database.save_chat_message(user_id, "assistant", resp, session_id)
              return {
-                 "result": resp, 
+                 "session_id": session_id, "result": resp, 
                  "status": "pending_quantity", 
                  "data": {"item_name": item_name}
              }
@@ -452,8 +459,8 @@ def agent_chat_process(request: ChatRequest):
             # Use the intelligent LLM answer! (Prices, Q&A, greetings)
             resp = format_outbound_response(llm_answer)
             
-        database.save_chat_message(user_id, "assistant", resp)
-        return {"result": resp}
+        database.save_chat_message(user_id, "assistant", resp, session_id)
+        return {"session_id": session_id, "result": resp}
     
     # 2. Safety Check (Preliminary)
     extraction["prescription_verified"] = False # No file uploaded directly in chat yet
@@ -462,8 +469,8 @@ def agent_chat_process(request: ChatRequest):
     if not safety_result["approved"]:
         eng_resp = f"{llm_answer}\nHowever, I cannot add this: {safety_result['reason']}"
         resp = format_outbound_response(eng_resp)
-        database.save_chat_message(user_id, "assistant", resp)
-        return {"result": resp, "status": safety_result.get("status", "rejected")}
+        database.save_chat_message(user_id, "assistant", resp, session_id)
+        return {"session_id": session_id, "result": resp, "status": safety_result.get("status", "rejected")}
     
     # 3. Add Multiple Items to Cart
     conn = database.get_db_connection()
@@ -484,11 +491,11 @@ def agent_chat_process(request: ChatRequest):
     # We use the LLM's natural conversational response
     resp = format_outbound_response(llm_answer)
     
-    database.save_chat_message(user_id, "assistant", resp)
+    database.save_chat_message(user_id, "assistant", resp, session_id)
     langfuse_client.flush()
     
     return {
-        "result": resp,
+        "session_id": session_id, "result": resp,
         "status": "cart_added"
     }
 
@@ -501,9 +508,40 @@ def clear_user_cart(user_id: str):
     database.clear_cart(user_id)
     return {"status": "cleared"}
 
+class RefillRequest(BaseModel):
+    medicine: str
+
+@app.post("/cart/{user_id}/refill")
+def one_click_refill(user_id: str, req: RefillRequest):
+    conn = database.get_db_connection()
+    
+    # Get last quantity logic to decide how much to refill
+    cust = conn.execute("SELECT last_quantity FROM customers WHERE user_id = ?", (user_id,)).fetchone()
+    qty_to_add = cust['last_quantity'] if (cust and cust['last_quantity']) else 1
+    
+    # Get medicine details (price, prescription requirements)
+    # The medicines table in this schema doesn't have a prescription_required column directly
+    med = conn.execute("SELECT unit_price FROM medicines WHERE name = ?", (req.medicine,)).fetchone()
+    
+    if not med:
+        conn.close()
+        raise HTTPException(status_code=404, detail=f"Medicine {req.medicine} not found in inventory")
+        
+    price = med['unit_price'] * qty_to_add
+    
+    # We default is_prescribed to True for refill since they already got it once. 
+    database.add_to_cart(user_id, req.medicine, qty_to_add, price, is_prescribed=True)
+    conn.close()
+    
+    return {"status": "success", "message": f"Added {qty_to_add}x {req.medicine} to cart", "qty": qty_to_add}
+
 @app.get("/chat/history/{user_id}")
-def get_chat_history(user_id: str):
-    return database.get_chat_history(user_id)
+def get_chat_history(user_id: str, session_id: Optional[str] = None):
+    return database.get_chat_history(user_id, session_id)
+
+@app.get("/chat/sessions/{user_id}")
+def get_chat_sessions(user_id: str):
+    return database.get_user_chat_sessions(user_id)
 
 @app.get("/agent/alerts")
 def get_proactive_alerts(user_id: Optional[str] = None):
@@ -674,3 +712,45 @@ def api_get_user(user_id: str):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+# --- RESTOCK REQUESTS ---
+
+@app.get("/api/restocks")
+def api_get_restocks():
+    return database.get_pending_restock_requests()
+
+class RestockApprovalUpdate(BaseModel):
+    amount_to_add: int
+
+@app.post("/api/restocks/{request_id}/approve")
+def api_approve_restock(request_id: int, update: RestockApprovalUpdate):
+    req = database.get_restock_request_by_id(request_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Restock request not found")
+        
+    database.update_restock_request_status(request_id, 'approved')
+    
+    conn = database.get_db_connection()
+    # Add stock
+    conn.execute('UPDATE medicines SET stock = stock + ? WHERE name = ?', (update.amount_to_add, req['medicine']))
+    conn.commit()
+    conn.close()
+    
+    # Notify User that their medicine is now back in stock!
+    msg = f"Good news! The pharmacy has restocked {req['medicine']}. You can now complete your order!"
+    database.create_notification(req['user_id'], msg)
+    
+    return {"status": "success", "message": f"Added {update.amount_to_add} to {req['medicine']}"}
+
+@app.post("/api/restocks/{request_id}/reject")
+def api_reject_restock(request_id: int):
+    req = database.get_restock_request_by_id(request_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Restock request not found")
+        
+    database.update_restock_request_status(request_id, 'rejected')
+    
+    msg = f"We are currently unable to restock {req['medicine']} at this time."
+    database.create_notification(req['user_id'], msg)
+    
+    return {"status": "success", "message": "Restock request rejected"}

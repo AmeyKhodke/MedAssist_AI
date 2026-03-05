@@ -17,9 +17,16 @@ import AlertsView from './components/dashboard/AlertsView';
 import SettingsView from './components/dashboard/SettingsView';
 
 export default function AdminDashboard({ setRole }) {
-  const [activeView, setActiveView] = React.useState('dashboard');
-  const [refreshKey, setRefreshKey] = React.useState(0);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [activeView, setActiveView]         = React.useState('dashboard');
+  const [refreshKey, setRefreshKey]         = React.useState(0);
+  const [isDarkMode, setIsDarkMode]         = useState(false);
+  const [filteredSalesData, setFilteredSalesData] = useState([]);
+  const [activeFilter, setActiveFilter]     = useState('year');
+
+  const handleFilteredData = (data, filter) => {
+    setFilteredSalesData(data);
+    setActiveFilter(filter);
+  };
 
   const toggleDarkMode = () => setIsDarkMode(prev => !prev);
 
@@ -82,9 +89,9 @@ export default function AdminDashboard({ setRole }) {
                 </div>
 
                 <div key={refreshKey}>
-                  <DashboardSummary isDarkMode={isDarkMode} />
+                  <DashboardSummary isDarkMode={isDarkMode} salesData={filteredSalesData} activeFilter={activeFilter} />
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
-                    <SalesChart isDarkMode={isDarkMode} />
+                    <SalesChart isDarkMode={isDarkMode} onFilteredData={handleFilteredData} />
                     <InventoryCharts isDarkMode={isDarkMode} />
                   </div>
                   <div className="grid grid-cols-1 pb-6">

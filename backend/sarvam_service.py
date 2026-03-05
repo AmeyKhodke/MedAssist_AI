@@ -12,7 +12,7 @@ def translate_text(text: str, source_lang: str = "Unknown", target_lang: str = "
     By default, detects the source language and translates to English (en-IN).
     Returns a dict with: {'translated_text': str, 'detected_source': str}
     """
-    if not SARVAM_API_KEY or SARVAM_API_KEY == "your_sarvam_api_key_here":
+    if not SARVAM_API_KEY or SARVAM_API_KEY == "sk_e0nw1xzt_WaiLKhTxwOlNqut5DJDQUeaY":
         # If no key, just return the text as-is (graceful degradation)
         return {"translated_text": text, "detected_source": source_lang}
         

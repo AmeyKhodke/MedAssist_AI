@@ -89,6 +89,20 @@ const ClientDashboard = ({ user, onLogout }) => {
     }
   };
 
+  const handleRefillClick = async (medicineName) => {
+    setLoading(true);
+    try {
+      await axios.post(`http://localhost:8000/cart/${user.id}/refill`, { medicine: medicineName });
+      fetchCart();
+      setActiveTab('cart');
+    } catch (err) {
+      console.error("Failed to add refill to cart", err);
+      setActiveTab('chat'); // fallback to chat
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const fetchUserProfile = async () => {
     if (user && user.id) {
        try {
@@ -440,7 +454,7 @@ const ClientDashboard = ({ user, onLogout }) => {
                         <button
                           onClick={() => {
                             checkoutCart();
-                            window.open('https://www.upilinks.in/payment-link/upi1175539430', '_blank');
+                            window.open('https://www.upilinks.in/payment-link/upi177795155', '_blank');
                           }}
                           className="flex-1 py-4 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-2xl font-bold transition-all shadow-lg shadow-emerald-500/25 active:scale-[0.98] flex items-center justify-center gap-2 text-base"
                         >
@@ -494,7 +508,7 @@ const ClientDashboard = ({ user, onLogout }) => {
                         <span className="text-xs font-bold text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/30 px-2 py-1 rounded">
                           {alert.days_remaining} Days Supply Left
                         </span>
-                        <button onClick={() => setActiveTab('chat')} className="text-sm font-bold text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 flex items-center gap-1 group/btn">
+                        <button onClick={() => handleRefillClick(alert.medicine)} className="text-sm font-bold text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 flex items-center gap-1 group/btn">
                           Order Refill <ArrowRight size={16} className="group-hover/btn:translate-x-1 transition-transform" />
                         </button>
                       </div>

@@ -109,6 +109,19 @@ def init_db():
         )
     ''')
     
+    # Create restock_requests table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS restock_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT,
+            medicine TEXT,
+            requested_qty INTEGER,
+            current_stock INTEGER,
+            status TEXT DEFAULT 'pending',
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
     # Add column if it doesn't exist (for existing SQLite databases)
     try:
         c.execute("ALTER TABLE cart_items ADD COLUMN is_prescribed BOOLEAN DEFAULT 0")
@@ -135,6 +148,10 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
+    try:
+        c.execute("ALTER TABLE chat_history ADD COLUMN session_id TEXT")
+    except sqlite3.OperationalError:
+        pass
     
     conn.commit()
     conn.close()
@@ -162,9 +179,12 @@ def get_notifications(user_id: str):
     conn.close()
     return [dict(row) for row in notifs]
 
-def save_chat_message(user_id: str, role: str, content: str):
+def save_chat_message(user_id: str, role: str, content: str, session_id: str = None):
     conn = get_db_connection()
-    conn.execute('INSERT INTO chat_history (user_id, role, content) VALUES (?, ?, ?)', (user_id, role, content))
+    if session_id:
+        conn.execute('INSERT INTO chat_history (user_id, role, content, session_id) VALUES (?, ?, ?, ?)', (user_id, role, content, session_id))
+    else:
+        conn.execute('INSERT INTO chat_history (user_id, role, content) VALUES (?, ?, ?)', (user_id, role, content))
     conn.commit()
     conn.close()
 
@@ -599,3 +619,32 @@ def add_medicine(name: str, category: str, unit_price: float, stock: int):
         return False
     finally:
         conn.close()
+
+# --- RESTOCK REQUESTS ---
+
+def create_restock_request(user_id: str, medicine: str, requested_qty: int, current_stock: int):
+    conn = get_db_connection()
+    conn.execute('''
+        INSERT INTO restock_requests (user_id, medicine, requested_qty, current_stock, status)
+        VALUES (?, ?, ?, ?, 'pending')
+    ''', (user_id, medicine, requested_qty, current_stock))
+    conn.commit()
+    conn.close()
+
+def get_pending_restock_requests():
+    conn = get_db_connection()
+    requests = conn.execute("SELECT * FROM restock_requests WHERE status = 'pending' ORDER BY timestamp DESC").fetchall()
+    conn.close()
+    return [dict(r) for r in requests]
+
+def update_restock_request_status(request_id: int, status: str):
+    conn = get_db_connection()
+    conn.execute('UPDATE restock_requests SET status = ? WHERE id = ?', (status, request_id))
+    conn.commit()
+    conn.close()
+    
+def get_restock_request_by_id(request_id: int):
+    conn = get_db_connection()
+    req = conn.execute("SELECT * FROM restock_requests WHERE id = ?", (request_id,)).fetchone()
+    conn.close()
+    return dict(req) if req else None
