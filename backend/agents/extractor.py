@@ -4,13 +4,17 @@ import json
 import base64
 import io
 import pypdf
+from datetime import datetime
 from typing import Dict, List, Any, Optional
 from dotenv import load_dotenv
 
 import database
 import langfuse_client
+import memory_engine
 
 # Load environment variables from .env file
+from config import Config
+
 load_dotenv(override=True)
 
 try:
@@ -74,7 +78,7 @@ class OrderExtractorAgent:
             self._medicine_names = get_medicine_catalog_data()
         return self._medicine_names
 
-    def run(self, text: str, user_id: str = "GUEST"):
+    def run(self, text: str, user_id: str = "GUEST", session_id: str = None):
         # Langfuse trace
         trace = langfuse_client.trace_interaction("OrderExtractor", text, user_id=user_id)
         
@@ -83,32 +87,35 @@ class OrderExtractorAgent:
 
         catalog_data = self.medicine_catalog
 
+        # ── Retrieve per-user memory context (long-term facts + session history) ─
+        memory_context = memory_engine.retrieve_memory_context(user_id, session_id=session_id)
+        if memory_context:
+            mem_line_count = memory_context.count('\n') + 1
+            print(f"[MEMORY] Injecting {mem_line_count} memory/context lines for {user_id} | session={session_id}")
+        else:
+            print(f"[MEMORY] No prior memories or session history for {user_id}")
+
         # Prompt engineering to handle "messy" NLP, multiple items, and Q&A
         prompt = f"""
         You are 'MedAssist AI', an intelligent and highly capable conversational pharmacy assistant.
         Your task is to parse a user's conversational text, ANSWER any questions they have based on our inventory catalog, AND handle their purchase intents.
+        
+        RETURN YOUR RESPONSE IN VALID JSON FORMAT.
+        
+        USER MEMORY BANK (Personal history for THIS user — includes long-term facts AND recent conversation turns):
+        {memory_context if memory_context else "No prior history recorded for this user."}
         
         CRITICAL INSTRUCTIONS FOR ORDER FLOW:
         1. Read the user's text. If they are asking a question (e.g. "What's the price of X?"), use the Current Inventory catalog to answer them warmly in the 'answer' field.
         2. UI WIDGET TRIGGER: If the user expresses intent to buy an item BUT DOES NOT specify an exact quantity/number (e.g. "I want Paracetamol"), you MUST NOT add it to the 'medicines' array. Instead, extract the intended inventory name into the 'pending_item_name' field so the frontend can display the Dose UI.
         3. EXPLICIT CART ADDITION: If the user EXPLICITLY provides a quantity AND a medicine name (e.g. "Please add 20 of Paracetamol to my cart" or "I want 5 Advil"), you MUST extract it directly into the 'medicines' array and SET 'pending_item_name' to null. Do not use pending_item_name if a number/quantity is present!
         4. If it's completely unclear or not in inventory, provide the closest match in 'suggestions'.
+        5. USE THE MEMORY BANK above to personalise your response — e.g. if user has diabetes, mention sugar-free options; if they ordered before, acknowledge their history warmly. If there is a recent CURRENT SESSION HISTORY, CONTINUE THE CONVERSATION NATURALLY from where it left off — do not repeat yourself.
+        6. The 'answer' field should be a warm, natural, conversational reply. ALWAYS populate it.
         
         Our Current Inventory (Name | Price | Stock | Rx Required): 
         {catalog_data}
-        
-        Return ONLY a raw JSON object with the following exact schema, do not include markdown blocks:
-        {{
-            "answer": "Your friendly conversational response or question (e.g. 'How much Paracetamol do you need?').",
-            "pending_item_name": "Exact Name From Inventory String OR null",
-            "medicines": [
-                {{
-                    "name": "Exact Name From Inventory String",
-                    "qty": integer_quantity
-                }}
-            ],
-            "suggestions": ["list", "of", "similar", "medicines", "if", "not", "found"]
-        }}
+        ... (rest same schema) ...
         """
 
         if not self.client:
@@ -144,7 +151,7 @@ class OrderExtractorAgent:
             
             raw_text = chat_completion.choices[0].message.content.strip()
             extracted_data = json.loads(raw_text)
-            
+
             result = {
                 "answer": extracted_data.get("answer", "I understood your request."),
                 "pending_item_name": extracted_data.get("pending_item_name", None),
@@ -152,6 +159,15 @@ class OrderExtractorAgent:
                 "suggestions": extracted_data.get("suggestions", []),
                 "user_id": user_id
             }
+
+            # ── Store memory for EVERY interaction (not just orders) ───────────
+            memory_engine.store_interaction_memory(
+                user_id=user_id,
+                user_text=text,
+                extraction_result=result,
+                interaction_type="order" if result["medicines"] else "query",
+            )
+            
         except Exception as e:
             err_str = str(e).lower()
             print(f"Groq Extraction Failed: {err_str}")

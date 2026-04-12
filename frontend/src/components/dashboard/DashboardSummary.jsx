@@ -1,17 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, TrendingUp, ShoppingBag, BarChart2 } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { AlertCircle, TrendingUp, ShoppingBag, BarChart2, Zap, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
-import axios from 'axios';
+import api from '../../api';
 
-const FILTER_LABELS = {
-  '7days': 'Last 7 days',
-  'month': 'This month',
-  'year':  'This year',
-};
-
-export default function DashboardSummary({ isDarkMode = false, salesData = null, activeFilter = 'year' }) {
-  const [data, setData]           = useState(null);
-  const [loading, setLoading]     = useState(true);
+export default function DashboardSummary({ isDarkMode = true, salesData = null, activeFilter = 'year' }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchData();
@@ -19,107 +14,135 @@ export default function DashboardSummary({ isDarkMode = false, salesData = null,
 
   const fetchData = async () => {
     try {
-      const summaryRes = await axios.get('http://localhost:8000/api/dashboard/summary');
+      setLoading(true);
+      const summaryRes = await api.get(`/api/dashboard/summary`);
       setData(summaryRes.data);
     } catch (err) {
-      console.error("Error fetching dashboard summary", err);
+      console.error("Critical: Summary sync failure.", err);
     } finally {
       setLoading(false);
     }
   };
 
   if (loading) return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 mt-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-10">
       {[1,2,3,4].map(i => (
-        <div key={i} className={`h-[150px] rounded-lg animate-pulse ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`} />
+        <div key={i} className="h-40 rounded-3xl bg-white/[0.02] border border-white/5 animate-pulse" />
       ))}
     </div>
   );
 
-  // Compute revenue & profit from filtered sales data when available
-  const filteredRevenue = salesData && salesData.length > 0
+  const displayRevenue = salesData && salesData.length > 0
     ? salesData.reduce((sum, d) => sum + (d.total_sales  || 0), 0)
-    : null;
-  const filteredProfit = salesData && salesData.length > 0
+    : (data?.total_revenue ?? data?.today_revenue ?? 0);
+
+  const displayProfit = salesData && salesData.length > 0
     ? salesData.reduce((sum, d) => sum + (d.total_profit || 0), 0)
-    : null;
+    : (data?.monthly_profit ?? 0);
 
-  const displayRevenue = filteredRevenue !== null ? filteredRevenue : (data?.total_revenue ?? data?.today_revenue ?? 0);
-  const displayProfit  = filteredProfit  !== null ? filteredProfit  : (data?.monthly_profit ?? 0);
-
-  const sparkData    = (salesData && salesData.length > 0 ? salesData : []).slice(-7);
+  const sparkData = (salesData && salesData.length > 0 ? salesData : []).slice(-7);
   const revenueTrend = sparkData.map(d => ({ value: d.total_sales  }));
   const profitTrend  = sparkData.map(d => ({ value: d.total_profit }));
 
   const filterLabel = FILTER_LABELS[activeFilter] || 'Selected period';
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 mt-6">
-      <KPICard isDarkMode={isDarkMode}
-        title="Total Medicines" value={data?.total_medicines ?? '—'}
-        icon={<ShoppingBag size={24} className="text-blue-500" />}
-        trend={`${data?.total_medicines ?? 0} SKUs tracked`} trendUp={true}
-        colorClass="bg-[#E0F2FE]" strokeColor="#0EA5E9" textColor="text-[#0369A1]"
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-10">
+      <KPICard 
+        title="Resource Inventory" 
+        value={data?.total_medicines ?? '0'}
+        icon={<ShoppingBag size={20} />}
+        trend={`${data?.total_medicines ?? 0} Global SKUs`} 
+        trendUp={true}
+        color="indigo"
         sparkData={Array.from({ length: 7 }, (_, i) => ({ value: 40 + i * 2 }))}
       />
-      <KPICard isDarkMode={isDarkMode}
-        title="Low Stock Items" value={data?.low_stock_count ?? '—'}
-        icon={<AlertCircle size={24} className="text-amber-500" />}
-        trend={data?.low_stock_count > 0 ? 'Requires attention' : 'All stocked up'}
+      <KPICard 
+        title="Critical Deficits" 
+        value={data?.low_stock_count ?? '0'}
+        icon={<AlertCircle size={20} />}
+        trend={data?.low_stock_count > 0 ? 'High Risk Delta' : 'No Risks Detected'}
         trendUp={data?.low_stock_count === 0}
-        colorClass="bg-[#FFEDD5]" strokeColor="#F97316" textColor="text-[#C2410C]"
-        sparkData={Array.from({ length: 7 }, (_, i) => ({ value: Math.max(0, 5 - i) }))}
+        color="rose"
+        sparkData={Array.from({ length: 7 }, (_, i) => ({ value: Math.max(0, 15 - i * 2) }))}
       />
-      <KPICard isDarkMode={isDarkMode}
-        title="Revenue"
-        value={`₹${Number(displayRevenue).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
-        icon={<TrendingUp size={24} className="text-emerald-500" />}
-        trend={filterLabel} trendUp={true}
-        colorClass="bg-[#D1FAE5]" strokeColor="#10B981" textColor="text-[#047857]"
-        sparkData={revenueTrend.length ? revenueTrend : Array.from({ length: 7 }, (_, i) => ({ value: 10 + i * 5 }))}
+      <KPICard 
+        title="Yield Volume"
+        value={`₹${Number(displayRevenue).toLocaleString('en-IN')}`}
+        icon={<TrendingUp size={20} />}
+        trend={filterLabel} 
+        trendUp={true}
+        color="emerald"
+        sparkData={revenueTrend.length ? revenueTrend : Array.from({ length: 7 }, (_, i) => ({ value: 10 + Math.sin(i) * 5 }))}
       />
-      <KPICard isDarkMode={isDarkMode}
-        title="Profit"
-        value={`₹${Number(displayProfit).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
-        icon={<BarChart2 size={24} className="text-purple-500" />}
-        trend={`${filterLabel} (40% margin)`} trendUp={true}
-        colorClass="bg-[#F3E8FF]" strokeColor="#A855F7" textColor="text-[#7E22CE]"
+      <KPICard 
+        title="Operational Margin"
+        value={`₹${Number(displayProfit).toLocaleString('en-IN')}`}
+        icon={<BarChart2 size={20} />}
+        trend="Estimated 42% Net" 
+        trendUp={true}
+        color="purple"
         sparkData={profitTrend.length ? profitTrend : Array.from({ length: 7 }, (_, i) => ({ value: 5 + i * 3 }))}
       />
     </div>
   );
 }
 
-function KPICard({ title, value, icon, trend, trendUp, colorClass, strokeColor, textColor, sparkData, isDarkMode = false }) {
-  const cardBg   = isDarkMode ? 'bg-slate-800 border-slate-700' : `${colorClass} border-slate-100`;
-  const titleCls = isDarkMode ? 'text-slate-400' : `${textColor} opacity-80`;
-  const valueCls = isDarkMode ? 'text-white'     : textColor;
-  const trendCls = isDarkMode ? 'text-slate-500' : `${textColor} opacity-70`;
-  const iconWell = isDarkMode ? 'bg-slate-700'   : 'bg-white/50 backdrop-blur-sm';
+function KPICard({ title, value, icon, trend, trendUp, color, sparkData }) {
+  const colorMap = {
+    indigo: "text-indigo-400 border-indigo-500/20 bg-indigo-500/10",
+    rose: "text-rose-400 border-rose-500/20 bg-rose-500/10",
+    emerald: "text-emerald-400 border-emerald-500/20 bg-emerald-500/10",
+    purple: "text-purple-400 border-purple-500/20 bg-purple-500/10",
+  };
+
+  const accentColor = {
+    indigo: "#6366f1",
+    rose: "#f43f5e",
+    emerald: "#10b981",
+    purple: "#a855f7",
+  }[color];
 
   return (
-    <div className={`rounded-lg p-5 shadow-sm border flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition-all h-[150px] ${cardBg}`}>
-      <div className="flex justify-between items-start z-10 w-full">
-        <div className="flex-1">
-          <p className={`text-sm font-semibold mb-1 ${titleCls}`}>{title}</p>
-          <h3 className={`text-2xl font-bold tracking-tight ${valueCls}`}>{value}</h3>
+    <motion.div 
+      whileHover={{ y: -5 }}
+      className="glass-card border border-white/5 p-8 rounded-[32px] bg-white/[0.01] relative overflow-hidden group transition-all"
+    >
+      <div className="flex justify-between items-start mb-6">
+        <div>
+          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">{title}</p>
+          <h3 className="text-3xl font-black text-white tracking-tight">{value}</h3>
         </div>
-        <div className={`p-2.5 rounded-lg self-start ml-2 shadow-sm ${iconWell}`}>
+        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${colorMap[color]}`}>
           {icon}
         </div>
       </div>
-      <div className="mt-auto flex items-end justify-between z-10 w-full relative">
-        <div className="w-20 h-10 -ml-2 -mb-2">
+      
+      <div className="flex items-end justify-between">
+        <div className="w-24 h-12 -ml-2">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={sparkData}>
-              <Line type="monotone" dataKey="value" stroke={strokeColor} strokeWidth={2.5} dot={false} isAnimationActive={false} />
+              <Line 
+                type="monotone" 
+                dataKey="value" 
+                stroke={accentColor} 
+                strokeWidth={3} 
+                dot={false} 
+                isAnimationActive={true}
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>
-        <p className={`text-xs font-medium ${trendCls} text-right max-w-[120px]`}>
-          {trendUp ? '▲' : '▼'} {trend}
-        </p>
+        <div className="text-right">
+           <div className={`flex items-center justify-end gap-1 text-[10px] font-black uppercase tracking-widest ${trendUp ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {trendUp ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+              <span>{trend}</span>
+           </div>
+        </div>
       </div>
-    </div>
+
+      {/* Glow Effect */}
+      <div className={`absolute -right-4 -bottom-4 w-20 h-20 blur-[60px] opacity-20 pointer-events-none transition-opacity group-hover:opacity-40 rounded-full bg-${color}-500`} />
+    </motion.div>
   );
 }

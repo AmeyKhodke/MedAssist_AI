@@ -1,6 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { FileCheck, Check, X } from 'lucide-react';
+import api from '../../api';
 
 export default function ApprovalPanel() {
   const [approvals, setApprovals] = useState([]);
@@ -12,7 +10,7 @@ export default function ApprovalPanel() {
 
   const fetchApprovals = async () => {
     try {
-      const res = await axios.get('http://localhost:8000/api/approvals');
+      const res = await api.get('/api/approvals');
       setApprovals(res.data);
       setLoading(false);
     } catch (err) {
@@ -34,7 +32,7 @@ export default function ApprovalPanel() {
     // Optimistic UI update
     setApprovals(prev => prev.filter(a => a.id !== approvalId));
     try {
-      await axios.post(`http://localhost:8000/api/approvals/${approvalId}`, {
+      await api.post(`/api/approvals/${approvalId}`, {
         status: actionStr,
         reason: reason
       });

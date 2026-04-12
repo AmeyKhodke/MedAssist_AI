@@ -1,9 +1,9 @@
+import os
 import sqlite3
 import pandas as pd
-import os
-from contextlib import contextmanager
+from config import Config
 
-DB_PATH = "pharmacy.db"
+DB_PATH = Config.DB_PATH
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
 def get_db_connection():
@@ -50,13 +50,16 @@ def init_db():
             name TEXT,
             phone TEXT,
             email TEXT,
+            password TEXT,
             medicine TEXT,
             dosage_frequency TEXT,
             last_purchase_date TEXT,
             last_quantity INTEGER,
             avg_monthly_usage INTEGER,
             age INTEGER,
-            gender TEXT
+            gender TEXT,
+            auth_provider TEXT DEFAULT 'local',
+            role TEXT DEFAULT 'client'
         )
     ''')
     
@@ -121,6 +124,18 @@ def init_db():
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # Create per-user memory bank table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS user_memories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            memory_type TEXT DEFAULT 'general',
+            content TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_user_memories_user_id ON user_memories (user_id)')
     
     # Add column if it doesn't exist (for existing SQLite databases)
     try:
@@ -152,7 +167,18 @@ def init_db():
         c.execute("ALTER TABLE chat_history ADD COLUMN session_id TEXT")
     except sqlite3.OperationalError:
         pass
+
+    try:
+        c.execute("ALTER TABLE customers ADD COLUMN role TEXT DEFAULT 'client'")
+    except sqlite3.OperationalError:
+        pass
     
+    # Migration: add user_memories index if missing (safe no-op if already exists)
+    try:
+        c.execute('CREATE INDEX IF NOT EXISTS idx_user_memories_user_id ON user_memories (user_id)')
+    except Exception:
+        pass
+
     conn.commit()
     conn.close()
     
@@ -187,14 +213,51 @@ def save_chat_message(user_id: str, role: str, content: str, session_id: str = N
         conn.execute('INSERT INTO chat_history (user_id, role, content) VALUES (?, ?, ?)', (user_id, role, content))
     conn.commit()
     conn.close()
+    
+    # Sync raw chat turns directly to Hindsight observational bank
+    try:
+        import memory_engine
+        memory_engine.sync_to_hindsight(
+            user_id=user_id, 
+            content=content, 
+            role=role, 
+            session_id=session_id or "default_session",
+            msg_type="chat"
+        )
+    except Exception:
+        pass
 
-def get_chat_history(user_id: str, limit: int = 50):
+def get_chat_history(user_id: str, session_id: str = None, limit: int = 50):
     conn = get_db_connection()
-    history = conn.execute('SELECT role, content, timestamp FROM chat_history WHERE user_id = ? ORDER BY timestamp ASC', (user_id,)).fetchall()
+    if session_id:
+        history = conn.execute(
+            'SELECT role, content, timestamp FROM chat_history WHERE user_id = ? AND session_id = ? ORDER BY timestamp ASC',
+            (user_id, session_id)
+        ).fetchall()
+    else:
+        history = conn.execute(
+            'SELECT role, content, timestamp FROM chat_history WHERE user_id = ? ORDER BY timestamp ASC',
+            (user_id,)
+        ).fetchall()
     conn.close()
-    # If no history, return empty or default greeting? 
-    # Let's return actual history. Frontend can handle default greeting.
     return [dict(row) for row in history]
+
+
+def get_recent_session_messages(user_id: str, session_id: str, limit: int = 10) -> list:
+    """Return the last `limit` messages (user + assistant) for the current session.
+    Used to inject short-term conversational context into the LLM prompt."""
+    if not user_id or not session_id:
+        return []
+    conn = get_db_connection()
+    rows = conn.execute(
+        '''SELECT role, content FROM chat_history
+           WHERE user_id = ? AND session_id = ?
+           ORDER BY timestamp DESC LIMIT ?''',
+        (user_id, session_id, limit)
+    ).fetchall()
+    conn.close()
+    # Reverse so oldest-first for natural reading order
+    return [dict(r) for r in reversed(rows)]
 
 
 def load_excel_data():
@@ -304,7 +367,7 @@ def load_excel_data():
                 
                 if user_id not in customers_map:
                     # Assign emails dynamically during DB load so they are never overwritten
-                    assigned_email = "jejurkarom@gmail.com" if user_id == "PAT001" else f"random_{user_id}@example.com"
+                    assigned_email = f"patient_{user_id}@example.com"
                     customers_map[user_id] = {
                         "user_id": user_id,
                         "name": f"Patient {user_id}", # File doesn't have names, use ID
@@ -374,7 +437,7 @@ def get_medicine_catalog():
     catalog = []
     for m in medicines:
         rx = "Yes" if m['prescription_required'] else "No"
-        catalog.append(f"Name: {m['name']} | Price: ₹{m['unit_price']:.2f} | Stock: {m['stock']} | Rx Req: {rx}")
+        catalog.append(f"Name: {m['name']} | Price: INR{m['unit_price']:.2f} | Stock: {m['stock']} | Rx Req: {rx}")
     return "\n".join(catalog)
 
 def get_dashboard_summary():
@@ -561,27 +624,29 @@ def check_approved_prescription(user_id: str, medicine: str) -> bool:
 
 # --- AUTHENTICATION HELPERS ---
 
-def create_customer(name: str, email: str, phone: str, password_hash: str, auth_provider: str = 'local') -> str:
+def create_customer(name: str, email: str, phone: str, password_hash: str, auth_provider: str = 'local', role: str = 'client') -> str:
     conn = get_db_connection()
     c = conn.cursor()
     
-    # Generate sequential PATxxx ID
-    c.execute("SELECT user_id FROM customers WHERE user_id LIKE 'PAT%' ORDER BY user_id DESC LIMIT 1")
+    # Generate PAT / ADM based on role
+    prefix = 'ADM' if role == 'admin' else 'PAT'
+    
+    c.execute(f"SELECT user_id FROM customers WHERE user_id LIKE '{prefix}%' ORDER BY user_id DESC LIMIT 1")
     last_user = c.fetchone()
     if last_user:
         try:
-            num = int(last_user['user_id'].replace('PAT', ''))
-            new_id = f"PAT{num+1:03d}"
+            num = int(last_user['user_id'].replace(prefix, ''))
+            new_id = f"{prefix}{num+1:03d}"
         except:
             import uuid
-            new_id = f"PAT{str(uuid.uuid4())[:6].upper()}"
+            new_id = f"{prefix}{str(uuid.uuid4())[:6].upper()}"
     else:
-        new_id = "PAT001"
+        new_id = f"{prefix}001"
         
     c.execute('''
-        INSERT INTO customers (user_id, name, email, phone, password, auth_provider)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (new_id, name, email, phone, password_hash, auth_provider))
+        INSERT INTO customers (user_id, name, email, phone, password, auth_provider, role)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (new_id, name, email, phone, password_hash, auth_provider, role))
     
     conn.commit()
     conn.close()
@@ -648,3 +713,58 @@ def get_restock_request_by_id(request_id: int):
     req = conn.execute("SELECT * FROM restock_requests WHERE id = ?", (request_id,)).fetchone()
     conn.close()
     return dict(req) if req else None
+
+
+# --- PER-USER DYNAMIC MEMORY BANK ---
+
+def add_memory(user_id: str, content: str, memory_type: str = 'general'):
+    """Store a new memory fact for a specific user."""
+    if not user_id or user_id == 'GUEST' or not content:
+        return
+    conn = get_db_connection()
+    conn.execute(
+        'INSERT INTO user_memories (user_id, memory_type, content) VALUES (?, ?, ?)',
+        (user_id, memory_type, content)
+    )
+    conn.commit()
+    conn.close()
+
+def get_memories(user_id: str, limit: int = 12) -> list:
+    """Retrieve the most recent memories for a user."""
+    if not user_id or user_id == 'GUEST':
+        return []
+    conn = get_db_connection()
+    rows = conn.execute(
+        'SELECT memory_type, content, created_at FROM user_memories WHERE user_id = ? ORDER BY created_at DESC LIMIT ?',
+        (user_id, limit)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def clear_old_memories(user_id: str, keep_last: int = 50):
+    """Prune memories older than the last N to avoid unbounded growth."""
+    if not user_id or user_id == 'GUEST':
+        return
+    conn = get_db_connection()
+    conn.execute('''
+        DELETE FROM user_memories
+        WHERE user_id = ? AND id NOT IN (
+            SELECT id FROM user_memories WHERE user_id = ?
+            ORDER BY created_at DESC LIMIT ?
+        )
+    ''', (user_id, user_id, keep_last))
+    conn.commit()
+    conn.close()
+
+def get_chat_sessions_for_user(user_id: str):
+    """Return distinct session_ids for the user."""
+    conn = get_db_connection()
+    rows = conn.execute(
+        "SELECT DISTINCT session_id FROM chat_history WHERE user_id = ? AND session_id IS NOT NULL ORDER BY MAX(timestamp) DESC",
+        (user_id,)
+    ).fetchall()
+    conn.close()
+    return [r['session_id'] for r in rows]
+
+# Alias used by app.py /chat/sessions endpoint
+get_user_chat_sessions = get_chat_sessions_for_user

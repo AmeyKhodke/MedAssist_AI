@@ -1,23 +1,22 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import ChatInterface from './components/chat/ChatInterface';
 import { 
   MessageSquare, ShoppingBag, Bell, AlertCircle, Calendar, Package, 
   ShieldCheck, ShoppingCart, CheckCircle, ArrowRight,
-  LogOut, User, Menu, X, Plus, Clock, Moon, Sun
+  LogOut, User, Menu, X, Plus, Clock, Moon, Sun, Sparkles, HeartPulse
 } from 'lucide-react';
-import axios from 'axios';
+import api from './api';
 
 const ClientDashboard = ({ user, onLogout }) => {
-  const [activeTab, setActiveTab] = useState('chat'); // chat, orders, alerts, cart, profile
+  const [activeTab, setActiveTab] = useState('chat'); 
   const [orders, setOrders] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [cartItems, setCartItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [userProfile, setUserProfile] = useState(null);
-  // Bumping this clears the chat view ("New Chat")
+  const [isDarkMode, setIsDarkMode] = useState(true);
   const [chatClearKey, setChatClearKey] = useState(0);
 
   useEffect(() => {
@@ -29,7 +28,7 @@ const ClientDashboard = ({ user, onLogout }) => {
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`http://localhost:8000/orders/${user.id}`);
+      const res = await api.get(`/orders`);
       setOrders(res.data);
     } catch (err) {
       console.error(err);
@@ -41,10 +40,9 @@ const ClientDashboard = ({ user, onLogout }) => {
   const fetchNotifications = async () => {
     setLoading(true);
     try {
-      // Fetch explicit notifications + Proactive alerts for this user
       const [notifRes, alertRes] = await Promise.all([
-        axios.get(`http://localhost:8000/notifications/${user.id}`),
-        axios.get(`http://localhost:8000/agent/alerts?user_id=${user.id}`)
+        api.get(`/notifications/${user.id}`),
+        api.get(`/agent/alerts`)
       ]);
       setNotifications(notifRes.data);
       setAlerts(alertRes.data);
@@ -58,7 +56,7 @@ const ClientDashboard = ({ user, onLogout }) => {
   const fetchCart = async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`http://localhost:8000/cart/${user.id}`);
+      const res = await api.get(`/cart`);
       setCartItems(res.data);
     } catch (err) {
       console.error(err);
@@ -70,11 +68,11 @@ const ClientDashboard = ({ user, onLogout }) => {
   const checkoutCart = async () => {
     setLoading(true);
     try {
-      await axios.post(`http://localhost:8000/cart/${user.id}/checkout`);
-      setActiveTab('orders'); // switch to orders on success
+      await api.post(`/cart/checkout`, {});
+      setActiveTab('orders');
     } catch (err) {
       console.error(err);
-      alert("Checkout failed: " + (err.response?.data?.detail || err.message));
+      // api instance handles toast error, but we keep the alert for specific detail if needed
     } finally {
       setLoading(false);
     }
@@ -82,7 +80,7 @@ const ClientDashboard = ({ user, onLogout }) => {
 
   const clearCart = async () => {
     try {
-      await axios.delete(`http://localhost:8000/cart/${user.id}`);
+      await api.delete(`/cart`);
       fetchCart();
     } catch (err) {
       console.error(err);
@@ -92,469 +90,328 @@ const ClientDashboard = ({ user, onLogout }) => {
   const handleRefillClick = async (medicineName) => {
     setLoading(true);
     try {
-      await axios.post(`http://localhost:8000/cart/${user.id}/refill`, { medicine: medicineName });
+      await api.post(`/cart/refill`, { medicine: medicineName });
       fetchCart();
       setActiveTab('cart');
     } catch (err) {
       console.error("Failed to add refill to cart", err);
-      setActiveTab('chat'); // fallback to chat
+      setActiveTab('chat');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchUserProfile = async () => {
-    if (user && user.id) {
-       try {
-         const res = await axios.get(`http://localhost:8000/api/users/${user.id}`);
-         setUserProfile(res.data);
-       } catch (err) {
-         console.error("Failed to fetch profile", err);
-       }
-    }
+  const tabVariants = {
+    initial: { opacity: 0, scale: 0.98, y: 10 },
+    animate: { opacity: 1, scale: 1, y: 0 },
+    exit: { opacity: 0, scale: 0.98, y: -10 }
   };
 
-  useEffect(() => {
-    fetchUserProfile();
-  }, [user]);
-
   return (
-    <div className={`flex h-screen w-full transition-colors duration-300 overflow-hidden font-sans ${isDarkMode ? 'dark text-slate-100 bg-slate-900' : 'text-slate-800 bg-[#F8F9FB]'}`}>
+    <div className="flex h-screen w-full transition-colors duration-500 overflow-hidden font-sans bg-[#0f172a] text-slate-100">
       
+      {/* Decorative Glows */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-indigo-500/10 rounded-full blur-[140px]"></div>
+        <div className="absolute bottom-[-20%] right-[-10%] w-[600px] h-[600px] bg-purple-500/10 rounded-full blur-[140px]"></div>
+      </div>
+
       {/* Mobile Header Bar */}
-      <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-[#1A1C2E] dark:bg-slate-950 border-b border-white/5 text-white flex items-center justify-between px-4 z-50">
-        <div className="flex items-center gap-2 font-bold">
-          <ShieldCheck size={20} className="text-blue-400" />
+      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-[#0f172a]/80 backdrop-blur-xl border-b border-white/5 flex items-center justify-between px-6 z-50">
+        <div className="flex items-center gap-2 font-bold text-white">
+          <HeartPulse size={20} className="text-indigo-400" />
           MedAssist AI
         </div>
-        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
-          {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 rounded-xl bg-white/5 border border-white/10">
+          {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
       </div>
 
-      {/* --- COLUMN 1: Primary Navy Sidebar --- */}
-      <div className={`fixed inset-y-0 left-0 z-40 w-64 md:w-20 lg:w-64 bg-[#1A1C2E] dark:bg-slate-950 border-r border-white/5 flex flex-col transition-transform duration-300 ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"} md:relative`}>
-        
-        {/* Logo / Brand */}
-        <div className="p-5 flex items-center gap-3 border-b border-white/10 hidden md:flex">
-          <div className="w-8 h-8 rounded-lg bg-[#0061FF] flex items-center justify-center flex-shrink-0">
-            <ShieldCheck size={20} className="text-white" />
+      {/* Sidebar */}
+      <motion.div 
+        initial={{ x: -100, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        className={`fixed inset-y-0 left-0 z-40 w-72 bg-black/20 backdrop-blur-3xl border-r border-white/5 flex flex-col transition-transform duration-300 ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"} md:relative`}
+      >
+        <div className="p-8 flex items-center gap-4 border-b border-white/5">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <ShieldCheck size={24} className="text-white" />
           </div>
-          <span className="font-bold text-white tracking-wide text-lg hidden lg:block">MedAssist</span>
+          <span className="font-bold text-white tracking-tight text-xl">MedAssist <span className="text-indigo-400">AI</span></span>
         </div>
 
-        {/* Navigation Links */}
-        <div className="flex-1 overflow-y-auto py-6 px-3 space-y-2">
-          
-          <div className={`w-full flex items-center gap-1 rounded-xl transition-colors ${activeTab === 'chat' ? 'bg-[#0061FF] shadow-lg shadow-blue-500/20' : 'hover:bg-white/5'}`}>
+        <div className="flex-1 overflow-y-auto py-8 px-4 space-y-3">
+          {[
+            { id: 'chat', label: 'AI Concierge', icon: MessageSquare, badge: null },
+            { id: 'orders', label: 'Order History', icon: ShoppingBag, badge: null },
+            { id: 'cart', label: 'My Cart', icon: ShoppingCart, badge: cartItems.length },
+            { id: 'alerts', label: 'Health Alerts', icon: Bell, badge: alerts.length + notifications.length },
+            { id: 'profile', label: 'Health Profile', icon: User, badge: null },
+          ].map((tab) => (
             <button
-              onClick={() => { setActiveTab('chat'); setIsMobileMenuOpen(false); }}
-              className={`flex-1 flex items-center gap-3 px-3 py-3 rounded-xl transition-colors ${activeTab === 'chat' ? 'text-white' : 'text-slate-400 hover:text-white'}`}
+              key={tab.id}
+              onClick={() => { setActiveTab(tab.id); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-300 relative group overflow-hidden ${
+                activeTab === tab.id 
+                ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-500/20' 
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
             >
-              <MessageSquare size={20} className="flex-shrink-0" />
-              <span className="font-medium lg:block md:hidden">AI Chat</span>
+              <tab.icon size={20} className={activeTab === tab.id ? 'text-white' : 'text-slate-500 group-hover:text-indigo-400'} />
+              <span className="font-semibold text-sm">{tab.label}</span>
+              {tab.badge > 0 && (
+                <span className="ml-auto bg-rose-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full ring-2 ring-black/10">
+                  {tab.badge}
+                </span>
+              )}
             </button>
-            <button
-              title="New Chat"
-              onClick={() => { setActiveTab('chat'); setChatClearKey(k => k + 1); setIsMobileMenuOpen(false); }}
-              className={`px-2 py-3 rounded-lg transition-colors lg:flex md:hidden flex ${activeTab === 'chat' ? 'text-white/70 hover:text-white' : 'text-slate-600 hover:text-white'}`}
-            >
-              <Plus size={16} />
-            </button>
-          </div>
-          
-          <button
-            onClick={() => { setActiveTab('orders'); setIsMobileMenuOpen(false); }}
-            className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors ${activeTab === 'orders' ? 'bg-[#0061FF] text-white shadow-lg shadow-blue-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-          >
-            <ShoppingBag size={20} className="flex-shrink-0" />
-            <span className="font-medium lg:block md:hidden">My Orders</span>
-          </button>
-          
-          <button
-            onClick={() => { setActiveTab('cart'); setIsMobileMenuOpen(false); }}
-            className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors relative ${activeTab === 'cart' ? 'bg-[#0061FF] text-white shadow-lg shadow-blue-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-          >
-            <ShoppingCart size={20} className="flex-shrink-0" />
-            <span className="font-medium flex-1 text-left lg:block md:hidden">My Cart</span>
-            {cartItems.length > 0 && (
-              <span className="w-5 h-5 bg-red-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center lg:block md:hidden border-2 border-[#1A1C2E] absolute right-3 lg:static">
-                {cartItems.length}
-              </span>
-            )}
-            {/* Dot for compacted sidebar */}
-            {cartItems.length > 0 && <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full lg:hidden hidden md:block border border-[#1A1C2E]"></span>}
-          </button>
-          
-          <button
-            onClick={() => { setActiveTab('alerts'); setIsMobileMenuOpen(false); }}
-            className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors relative ${activeTab === 'alerts' ? 'bg-[#0061FF] text-white shadow-lg shadow-blue-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-          >
-            <Bell size={20} className="flex-shrink-0" />
-            <span className="font-medium flex-1 text-left lg:block md:hidden">Alerts</span>
-            {(alerts.length > 0 || notifications.length > 0) && (
-              <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 animate-pulse rounded-full lg:hidden hidden md:block border border-[#1A1C2E]"></span>
-            )}
-            {(alerts.length > 0 || notifications.length > 0) && (
-               <div className="w-2 h-2 bg-rose-500 rounded-full animate-pulse lg:block md:hidden absolute right-3 lg:static"></div>
-            )}
-          </button>
-          
-          <button
-            onClick={() => { setActiveTab('profile'); setIsMobileMenuOpen(false); }}
-            className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors ${activeTab === 'profile' ? 'bg-[#0061FF] text-white shadow-lg shadow-blue-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-          >
-            <User size={20} className="flex-shrink-0" />
-            <span className="font-medium lg:block md:hidden">My Profile</span>
-          </button>
+          ))}
         </div>
 
-        {/* User Profile, Theme Toggle & Sign Out */}
-        <div className="p-4 border-t border-white/10 space-y-2">
-          
-          <button
-            onClick={() => setIsDarkMode(!isDarkMode)}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-amber-400 hover:bg-white/5 transition-colors"
-            title="Toggle Theme"
-          >
-            {isDarkMode ? <Sun size={20} className="flex-shrink-0" /> : <Moon size={20} className="flex-shrink-0 text-slate-400" />}
-            <span className={`font-medium text-sm lg:block md:hidden ${isDarkMode ? 'text-amber-400' : 'text-slate-400'}`}>
-               {isDarkMode ? 'Light Mode' : 'Dark Mode'}
-            </span>
-          </button>
-          
-          <div className="w-full flex items-center gap-3 px-2 py-2 rounded-xl text-slate-300">
-             <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0 border border-slate-600 overflow-hidden">
-               {userProfile?.avatar ? <img src={userProfile.avatar} alt="Avatar" className="w-full h-full object-cover" /> : <User size={16} />}
+        <div className="p-6 mt-auto">
+          <div className="p-4 glass-card rounded-2xl mb-4 bg-indigo-500/5">
+             <div className="flex items-center gap-2 text-indigo-400 mb-2">
+                <Sparkles size={16} />
+                <span className="text-xs font-bold uppercase tracking-wider">Hindsight Active</span>
              </div>
-             <div className="lg:block md:hidden overflow-hidden">
-               <p className="text-sm font-bold truncate text-white">{userProfile?.name || user.id}</p>
-               <p className="text-[10px] text-slate-400 tracking-widest leading-none mt-0.5 truncate">{userProfile?.email || user.role}</p>
-             </div>
+             <p className="text-[10px] text-slate-500 font-medium leading-relaxed">
+               I am learning your prescription patterns to better serve you.
+             </p>
           </div>
           <button
             onClick={onLogout}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition-colors"
-            title="Sign Out"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:text-rose-400 transition-colors font-semibold text-sm"
           >
-            <LogOut size={20} className="flex-shrink-0" />
-            <span className="font-medium text-sm lg:block md:hidden">Sign Out</span>
+            <LogOut size={20} /> Sign Out
           </button>
         </div>
-      </div>
+      </motion.div>
 
-      {/* --- COLUMN 2: Sessions sidebar removed (backend no longer has session API) ---
-          New Chat is now a button in the left primary sidebar */}
+      {/* Main Workspace */}
+      <div className="flex-1 flex flex-col min-w-0 bg-[#0f172a] relative z-10 overflow-hidden">
+        
+        <AnimatePresence mode="wait">
+          <motion.div 
+            key={activeTab}
+            variants={tabVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className={`flex-1 overflow-y-auto ${activeTab !== 'chat' ? 'p-8 md:p-12' : ''}`}
+          >
 
-      {/* --- COLUMN 3: Main Workspace (Flexible Width) --- */}
-      <div className={`flex-1 flex flex-col min-w-0 transition-transform duration-300 ${isMobileMenuOpen ? "translate-x-64" : "translate-x-0"} relative z-10 bg-[#F8F9FB] dark:bg-slate-900`}>
-        {/* Mobile overlay */}
-        {isMobileMenuOpen && (
-          <div className="absolute inset-0 bg-black/50 z-20 md:hidden" onClick={() => setIsMobileMenuOpen(false)}></div>
-        )}
-
-
-
-
-        {/* Content Render */}
-        <div className={`flex-1 overflow-y-auto ${activeTab !== 'chat' ? 'p-6 md:p-10' : ''}`}>
-
-        {/* Chat Tab */}
-        {activeTab === 'chat' && (
-          <div className="h-full w-full">
-            <ChatInterface
-               user={user}
-               isDarkMode={isDarkMode}
-               clearKey={chatClearKey}
-            />
-          </div>
-        )}
-
-        {/* Profile Tab */}
-        {activeTab === 'profile' && userProfile && (
-           <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200/60 dark:border-slate-800 overflow-hidden animate-in slide-in-from-bottom-4 duration-500 fade-in">
-             <div className="p-8 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 dark:from-slate-800 dark:to-slate-800 flex flex-col md:flex-row items-center md:items-start gap-6">
-                <div className="w-24 h-24 rounded-full bg-slate-100 dark:bg-slate-700 border-4 border-white dark:border-slate-800 shadow-lg overflow-hidden flex-shrink-0 flex items-center justify-center">
-                    {userProfile.avatar && !userProfile.avatar.includes('http://localhost:8000/static') ? 
-                        <img src={userProfile.avatar} alt="Profile Avatar" className="w-full h-full object-cover" /> : 
-                        <User size={40} className="text-slate-400"/>
-                    }
-                </div>
-                <div className="flex-1 text-center md:text-left">
-                    <h2 className="text-3xl font-black text-slate-900 dark:text-slate-100">{userProfile.name}</h2>
-                    <p className="text-slate-500 dark:text-slate-400 font-medium">{userProfile.email}</p>
-                    <div className="mt-4 flex flex-wrap justify-center md:justify-start gap-3">
-                        <span className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-xs font-bold text-slate-600 dark:text-slate-300 shadow-sm flex items-center gap-1"><User size={14}/> ID: {userProfile.user_id}</span>
-                    </div>
-                </div>
-             </div>
-             <div className="p-8">
-                 <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-6">Medical & Demographic Details</h3>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                     <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50 flex items-start gap-4 hover:shadow-sm transition-shadow">
-                         <div className="p-2 bg-white dark:bg-slate-700 rounded-xl shadow-sm text-blue-500"><Calendar size={20}/></div>
-                         <div>
-                             <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Age / Gender</p>
-                             <p className="font-semibold text-slate-800 dark:text-slate-200 mt-1">{userProfile.age || 'N/A'} yrs • {userProfile.gender || 'N/A'}</p>
-                         </div>
-                     </div>
-                     <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50 flex items-start gap-4 hover:shadow-sm transition-shadow">
-                         <div className="p-2 bg-white dark:bg-slate-700 rounded-xl shadow-sm text-indigo-500"><Clock size={20}/></div>
-                         <div>
-                             <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Dosage Frequency</p>
-                             <p className="font-semibold text-slate-800 dark:text-slate-200 mt-1">{userProfile.dosage_frequency || 'Not specified'}</p>
-                         </div>
-                     </div>
-                     <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50 flex items-start gap-4 hover:shadow-sm transition-shadow">
-                         <div className="p-2 bg-white dark:bg-slate-700 rounded-xl shadow-sm text-emerald-500"><Package size={20}/></div>
-                         <div>
-                             <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Avg Monthly Usage</p>
-                             <p className="font-semibold text-slate-800 dark:text-slate-200 mt-1">{userProfile.avg_monthly_usage || 0} units</p>
-                         </div>
-                     </div>
-                     <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50 flex items-start gap-4 hover:shadow-sm transition-shadow">
-                         <div className="p-2 bg-white dark:bg-slate-700 rounded-xl shadow-sm text-rose-500"><ShoppingBag size={20}/></div>
-                         <div>
-                             <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Primary Medication</p>
-                             <p className="font-semibold text-slate-800 dark:text-slate-200 mt-1">{userProfile.medicine || 'None on record'}</p>
-                         </div>
-                     </div>
-                 </div>
-             </div>
-           </div>
-        )}
-
-        {/* Orders Tab */}
-        {activeTab === 'orders' && (
-          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200/60 dark:border-slate-800 overflow-hidden animate-in slide-in-from-bottom-4 duration-500 fade-in">
-            <div className="p-6 sm:p-8 flex items-center justify-between border-b border-slate-100 dark:border-slate-800">
-              <div className="flex gap-4 items-center">
-                <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center border border-blue-100/50 dark:border-blue-500/20">
-                  <ShoppingBag size={24} />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">Order History</h3>
-                  <p className="text-sm font-medium text-slate-500 dark:text-slate-400">View and track your previous medications</p>
-                </div>
-              </div>
+          {activeTab === 'chat' && (
+            <div className="h-full w-full">
+              <ChatInterface
+                 user={user}
+                 isDarkMode={isDarkMode}
+                 clearKey={chatClearKey}
+              />
             </div>
+          )}
 
-            {loading ? (
-              <div className="p-12 text-center flex flex-col items-center justify-center gap-4 border-t border-slate-100 dark:border-slate-800">
-                <div className="w-10 h-10 rounded-full border-4 border-slate-200 dark:border-slate-700 border-t-blue-600 dark:border-t-blue-500 animate-spin"></div>
-                <p className="text-slate-500 dark:text-slate-400 font-medium font-sm">Loading your orders...</p>
+          {activeTab === 'profile' && (
+            <div className="max-w-4xl mx-auto space-y-10">
+               <div className="flex flex-col md:flex-row items-center gap-8 mb-12 text-center md:text-left">
+                  <div className="w-32 h-32 rounded-3xl bg-gradient-to-tr from-indigo-500 to-purple-500 p-1">
+                     <div className="w-full h-full rounded-[20px] bg-slate-900 flex items-center justify-center border border-white/10 outline-none">
+                        <User size={64} className="text-indigo-400" />
+                     </div>
+                  </div>
+                  <div>
+                     <h1 className="text-4xl font-extrabold text-white mb-2 tracking-tight">Patient Console</h1>
+                     <p className="text-slate-400 font-medium">Managing care for <span className="text-white">{user.id}</span></p>
+                  </div>
+               </div>
+
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {[
+                    { label: 'Patient Verified', value: 'Yes', icon: ShieldCheck, color: 'text-emerald-400' },
+                    { label: 'Active Prescriptions', value: '3 Active', icon: Package, color: 'text-indigo-400' },
+                    { label: 'Memory Points', value: '128 KB', icon: Sparkles, color: 'text-purple-400' },
+                    { label: 'Last Sync', value: 'Today', icon: Clock, color: 'text-amber-400' }
+                  ].map((stat, i) => (
+                    <div key={i} className="glass-card p-6 flex items-center gap-6">
+                       <div className={`p-4 rounded-2xl bg-white/5 ${stat.color} border border-white/5`}>
+                          <stat.icon size={24} />
+                       </div>
+                       <div>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">{stat.label}</p>
+                          <p className="text-xl font-bold text-white">{stat.value}</p>
+                       </div>
+                    </div>
+                  ))}
+               </div>
+            </div>
+          )}
+
+          {activeTab === 'orders' && (
+            <div className="max-w-5xl mx-auto">
+              <div className="flex items-center justify-between mb-10">
+                <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-4">
+                  <div className="p-3 bg-indigo-500/10 rounded-2xl border border-indigo-500/20">
+                    <ShoppingBag className="text-indigo-400" />
+                  </div>
+                  Fulfillment History
+                </h2>
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left font-medium text-sm whitespace-nowrap">
-                  <thead className="bg-slate-50/50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
-                    <tr>
-                      <th className="px-8 py-5">Date</th>
-                      <th className="px-8 py-5">Medication</th>
-                      <th className="px-8 py-5">Quantity</th>
-                      <th className="px-8 py-5 text-right">Total Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {orders.length === 0 ? (
-                      <tr>
-                        <td colSpan="4" className="p-16 text-center">
-                          <div className="flex flex-col items-center gap-4 text-slate-400 dark:text-slate-500">
-                            <Package size={48} strokeWidth={1} />
-                            <p className="font-medium">You don't have any past orders yet.</p>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : (
-                      orders.map((order, i) => (
-                        <tr key={i} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors group">
-                          <td className="px-8 py-5 text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                            <Calendar size={16} className="text-slate-400 dark:text-slate-500 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors" />
-                            {new Date(order.timestamp).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
-                          </td>
-                          <td className="px-8 py-5">
-                            <span className="font-bold text-slate-900 dark:text-slate-100 group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors">{order.medicine}</span>
-                          </td>
-                          <td className="px-8 py-5">
-                            <span className="inline-flex items-center justify-center px-3 py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs border border-slate-200 dark:border-slate-700">
-                              x{order.quantity}
-                            </span>
-                          </td>
-                          <td className="px-8 py-5 text-right font-bold text-slate-800 dark:text-slate-200">
-                            ₹{order.total_price}
-                          </td>
+
+              {loading ? (
+                <div className="py-20 text-center space-y-4">
+                  <div className="w-12 h-12 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin mx-auto"></div>
+                  <p className="text-slate-500 font-medium">Retrieving secure logs...</p>
+                </div>
+              ) : (
+                <div className="glass-card overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead className="border-b border-white/5 text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] bg-white/[0.02]">
+                        <tr>
+                          <th className="px-8 py-6">Timestamp</th>
+                          <th className="px-8 py-6">Item Description</th>
+                          <th className="px-8 py-6">Quantity</th>
+                          <th className="px-8 py-6 text-right">Settlement</th>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Cart Tab */}
-        {activeTab === 'cart' && (
-          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200/60 dark:border-slate-800 overflow-hidden animate-in slide-in-from-bottom-4 duration-500 fade-in">
-            <div className="p-6 sm:p-8 flex items-center justify-between border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 dark:from-slate-800 dark:to-slate-800">
-              <div className="flex gap-4 items-center">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center border border-indigo-100/50 dark:border-indigo-500/20 shadow-inner">
-                  <ShoppingCart size={24} />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">Your Shopping Cart</h3>
-                  <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Review your medications before confirming</p>
-                </div>
-              </div>
-            </div>
-
-            {loading ? (
-              <div className="p-12 text-center flex flex-col items-center justify-center gap-4 border-t border-slate-100 dark:border-slate-800">
-                <div className="w-10 h-10 rounded-full border-4 border-slate-200 dark:border-slate-700 border-t-indigo-600 dark:border-t-indigo-500 animate-spin"></div>
-                <p className="text-slate-500 dark:text-slate-400 font-medium font-sm">Loading your cart...</p>
-              </div>
-            ) : (
-              <div className="p-6 sm:p-8 space-y-6">
-                {cartItems.length === 0 ? (
-                  <div className="p-16 text-center flex flex-col items-center justify-center gap-4 text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700/50 border-dashed">
-                    <ShoppingCart size={48} strokeWidth={1} />
-                    <p className="font-medium">Your cart is empty.</p>
-                    <button onClick={() => setActiveTab('chat')} className="mt-2 text-sm text-indigo-600 dark:text-indigo-400 font-bold hover:underline">Ask AI Pharmacist to add items</button>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {orders.length === 0 ? (
+                          <tr>
+                            <td colSpan="4" className="py-24 text-center">
+                               <Package className="mx-auto text-slate-600 mb-4" size={48} strokeWidth={1.5} />
+                               <p className="text-slate-500 font-medium">No order data synchronized.</p>
+                            </td>
+                          </tr>
+                        ) : (
+                          orders.map((order, i) => (
+                            <tr key={i} className="hover:bg-white/[0.02] transition-colors">
+                              <td className="px-8 py-6 text-slate-400 font-medium text-sm">
+                                {new Date(order.timestamp).toLocaleString()}
+                              </td>
+                              <td className="px-8 py-6">
+                                <span className="font-bold text-white">{order.medicine}</span>
+                              </td>
+                              <td className="px-8 py-6">
+                                <span className="px-3 py-1 bg-white/5 rounded-lg border border-white/10 font-bold text-xs text-indigo-400">
+                                  {order.quantity} Units
+                                </span>
+                              </td>
+                              <td className="px-8 py-6 text-right font-black text-white">
+                                ₹{order.total_price}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
                   </div>
-                ) : (
-                  <>
-                    <div className="space-y-4">
-                      {cartItems.map((item, i) => (
-                        <div key={i} className="flex justify-between items-center p-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md transition-all group">
-                          <div className="flex items-center gap-4">
-                            <div className="h-10 w-10 rounded-full bg-slate-50 dark:bg-slate-700 flex items-center justify-center text-slate-400 dark:text-slate-500 border border-slate-100 dark:border-slate-600 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-500/20 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors">
-                              <Package size={18} />
-                            </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'cart' && (
+            <div className="max-w-3xl mx-auto">
+               <div className="flex items-center gap-4 mb-10">
+                  <div className="p-3 bg-purple-500/10 rounded-2xl border border-purple-500/20">
+                    <ShoppingCart className="text-purple-400" />
+                  </div>
+                  <h2 className="text-3xl font-bold text-white tracking-tight">Checkout Console</h2>
+               </div>
+
+               {loading ? (
+                 <div className="py-20 text-center"><div className="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto"></div></div>
+               ) : cartItems.length === 0 ? (
+                 <div className="p-20 text-center glass-card border-dashed">
+                    <Package className="mx-auto text-slate-600 mb-6" size={64} />
+                    <h3 className="text-xl font-bold text-white mb-2">Cart is Clear</h3>
+                    <p className="text-slate-500 mb-8">Ready to fulfill more prescriptions via MedAssist AI.</p>
+                    <button onClick={() => setActiveTab('chat')} className="premium-button mx-auto">Back to Concierge</button>
+                 </div>
+               ) : (
+                 <div className="space-y-6">
+                    <div className="glass-card p-8 divide-y divide-white/5">
+                       {cartItems.map((item, i) => (
+                         <div key={i} className="py-6 flex justify-between items-center first:pt-0 last:pb-0">
                             <div>
-                              <h4 className="font-bold text-slate-800 dark:text-slate-100 text-base">{item.medicine}</h4>
-                              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">Quantity: {item.quantity}</p>
+                               <h4 className="font-bold text-white text-lg">{item.medicine}</h4>
+                               <p className="text-sm text-slate-500 font-medium">Standard fulfillment • Qty: {item.quantity}</p>
                             </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-lg font-black text-slate-900 dark:text-slate-100">₹{(item.price || 0).toFixed(2)}</p>
-                          </div>
-                        </div>
-                      ))}
+                            <span className="text-xl font-black text-white">₹{(item.price || 0).toFixed(2)}</span>
+                         </div>
+                       ))}
+                       <div className="pt-8 mt-4 flex justify-between items-center border-t-2 border-indigo-500/20">
+                          <span className="text-sm font-bold text-slate-500 uppercase tracking-widest">Total Amount</span>
+                          <span className="text-4xl font-black text-indigo-400">₹{cartItems.reduce((acc, curr) => acc + (curr.price || 0), 0).toFixed(2)}</span>
+                       </div>
                     </div>
 
-                    <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-800">
-                      <div className="flex justify-between items-center mb-6 px-2">
-                        <span className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Estimated Total</span>
-                        <span className="text-3xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400">
-                          ₹{cartItems.reduce((acc, curr) => acc + (curr.price || 0), 0).toFixed(2)}
-                        </span>
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row gap-3">
-                        <button
-                          onClick={() => {
-                            checkoutCart();
-                            window.open('https://www.upilinks.in/payment-link/upi177795155', '_blank');
-                          }}
-                          className="flex-1 py-4 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-2xl font-bold transition-all shadow-lg shadow-emerald-500/25 active:scale-[0.98] flex items-center justify-center gap-2 text-base"
-                        >
-                          <CheckCircle size={20} /> Secure Checkout
-                        </button>
-                        <button
-                          onClick={clearCart}
-                          className="py-4 px-8 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-600 dark:text-slate-300 rounded-2xl font-bold transition-all active:scale-[0.98]"
-                        >
-                          Clear Cart
-                        </button>
-                      </div>
+                    <div className="flex gap-4">
+                       <button onClick={checkoutCart} className="premium-button flex-1 py-5 text-xl">
+                          <CheckCircle size={24} /> Confirm Fulfillment
+                       </button>
+                       <button onClick={clearCart} className="px-8 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 font-bold transition-all">
+                          Discard
+                       </button>
                     </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Notifications Tab */}
-        {activeTab === 'alerts' && (
-          <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500 fade-in">
-
-            <div className="flex items-center gap-3 px-2 mb-2">
-              <Bell className="text-slate-800 dark:text-slate-200" strokeWidth={2.5} />
-              <h3 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">Your Health Alerts</h3>
+                 </div>
+               )}
             </div>
+          )}
 
-            {/* Loading State */}
-            {loading && (
-              <div className="p-12 text-center flex flex-col items-center justify-center gap-4 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800">
-                <div className="w-10 h-10 rounded-full border-4 border-slate-200 dark:border-slate-700 border-t-blue-600 dark:border-t-blue-500 animate-spin"></div>
-                <p className="text-slate-500 dark:text-slate-400 font-medium font-sm">Syncing your alerts...</p>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Proactive Refill Alerts */}
-              {alerts.map((alert, i) => (
-                <div key={`alert-${i}`} className="bg-white dark:bg-slate-800 border text-left border-orange-100 dark:border-orange-900/50 p-6 rounded-3xl shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
-                  <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-orange-400 to-rose-400"></div>
-                  <div className="flex flex-col gap-4 relative z-10">
-                    <div className="w-12 h-12 rounded-full bg-orange-50 dark:bg-orange-500/10 text-orange-500 dark:text-orange-400 flex items-center justify-center shadow-inner">
-                      <AlertCircle size={24} />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-slate-900 dark:text-slate-100 text-lg">Action Needed: Refill Reminder</h4>
-                      <p className="text-slate-600 dark:text-slate-300 font-medium text-sm leading-relaxed mt-2">{alert.message}</p>
-                      <div className="mt-4 pt-4 border-t border-orange-50 dark:border-orange-900/50 flex items-center justify-between">
-                        <span className="text-xs font-bold text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/30 px-2 py-1 rounded">
-                          {alert.days_remaining} Days Supply Left
-                        </span>
-                        <button onClick={() => handleRefillClick(alert.medicine)} className="text-sm font-bold text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 flex items-center gap-1 group/btn">
-                          Order Refill <ArrowRight size={16} className="group-hover/btn:translate-x-1 transition-transform" />
-                        </button>
-                      </div>
-                    </div>
+          {activeTab === 'alerts' && (
+            <div className="max-w-4xl mx-auto space-y-8">
+               <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-4">
+                  <div className="p-3 bg-rose-500/10 rounded-2xl border border-rose-500/20">
+                    <Bell className="text-rose-400" />
                   </div>
-                </div>
-              ))}
+                  Safety & Sync Alerts
+               </h2>
 
-              {/* Manual Notifications */}
-              {notifications.map((notif, i) => (
-                <div key={`notif-${i}`} className="bg-white dark:bg-slate-800 border text-left border-blue-100 dark:border-blue-900/50 p-6 rounded-3xl shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
-                  <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-blue-400 to-indigo-400"></div>
-                  <div className="flex flex-col gap-4 relative z-10">
-                    <div className="w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-500 dark:text-blue-400 flex items-center justify-center shadow-inner">
-                      <MessageSquare size={24} />
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {alerts.map((alert, i) => (
+                    <div key={i} className="glass-card p-8 border-l-4 border-l-indigo-500 bg-indigo-500/[0.02]">
+                       <div className="flex items-start gap-5 mb-6">
+                          <div className="p-3 bg-indigo-500/10 rounded-xl"><AlertCircle className="text-indigo-400" /></div>
+                          <div className="flex-1">
+                             <h4 className="font-bold text-white text-lg leading-tight">{alert.medicine} Refill Alert</h4>
+                             <p className="text-sm text-slate-400 font-medium mt-1">Smart Monitor detected low supply.</p>
+                          </div>
+                          <div className="bg-indigo-500/20 text-indigo-300 text-[10px] font-black px-2 py-1 rounded-md">{alert.days_remaining}D LEFT</div>
+                       </div>
+                       <p className="text-sm text-slate-500 leading-relaxed mb-6">{alert.message}</p>
+                       <button 
+                         onClick={() => handleRefillClick(alert.medicine)} 
+                         className="w-full py-3 bg-indigo-600/10 border border-indigo-600/30 text-indigo-400 rounded-xl font-bold text-sm hover:bg-indigo-600 hover:text-white transition-all"
+                       >
+                         Automatic Refill
+                       </button>
                     </div>
-                    <div>
-                      <div className="flex justify-between items-start mb-2">
-                        <h4 className="font-bold text-slate-900 dark:text-slate-100 text-lg">Message from Pharmacy</h4>
-                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                          {new Date(notif.timestamp).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <p className="text-slate-600 dark:text-slate-300 font-medium text-sm leading-relaxed">{notif.message}</p>
+                  ))}
+
+                  {notifications.map((notif, i) => (
+                    <div key={i} className="glass-card p-8 border-l-4 border-l-slate-600">
+                       <div className="flex items-center gap-4 mb-4">
+                          <div className="p-2 bg-white/5 rounded-lg"><MessageSquare size={18} className="text-slate-400" /></div>
+                          <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{new Date(notif.timestamp).toLocaleDateString()}</p>
+                       </div>
+                       <p className="text-slate-300 font-medium leading-relaxed">{notif.message}</p>
                     </div>
-                  </div>
-                </div>
-              ))}
+                  ))}
+               </div>
+
+               {!loading && alerts.length === 0 && notifications.length === 0 && (
+                 <div className="py-32 text-center glass-card border-dashed">
+                    <ShieldCheck className="mx-auto text-slate-700 mb-6" size={64} />
+                    <h3 className="text-xl font-bold text-white mb-2">Systems Clear</h3>
+                    <p className="text-slate-500">All prescriptions are synchronized and medical safety is nominal.</p>
+                 </div>
+               )}
             </div>
+          )}
 
-            {/* Empty State */}
-            {!loading && alerts.length === 0 && notifications.length === 0 && (
-              <div className="p-16 text-center flex flex-col items-center justify-center gap-4 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                <div className="w-20 h-20 rounded-full bg-slate-50 dark:bg-slate-800 text-slate-300 dark:text-slate-600 flex items-center justify-center mb-2">
-                  <ShieldCheck size={40} />
-                </div>
-                <h4 className="text-xl font-bold text-slate-900 dark:text-slate-100">You're all caught up!</h4>
-                <p className="text-slate-500 dark:text-slate-400 font-medium text-sm max-w-sm">
-                  No new notifications or refill reminders. Your prescriptions are currently fully stocked.
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        </div>
+          </motion.div>
+        </AnimatePresence>
       </div>
     </div>
   );

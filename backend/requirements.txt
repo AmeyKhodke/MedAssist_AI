@@ -1,4 +1,4 @@
-﻿annotated-doc==0.0.4
+annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.12.1
 backoff==2.2.1
@@ -58,4 +58,9 @@ wrapt==1.17.3
 zipp==3.23.0
 groq==1.0.0
 
+python-jose[cryptography]
+bcrypt
+passlib
+pandas
+openpyxl
 pypdf

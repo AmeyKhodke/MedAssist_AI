@@ -1,19 +1,23 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks, File, UploadFile, Form
-from fastapi.staticfiles import StaticFiles
-import os
-import shutil
-import uuid
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Optional
-import models
-import database
-import langfuse_client
-import httpx
-import bcrypt
-import json
+from config import Config
+from jose import JWTError, jwt
+from datetime import datetime, timedelta
+from fastapi.security import OAuth2PasswordBearer
+from fastapi import FastAPI, HTTPException, BackgroundTasks, File, UploadFile, Form, Depends
 from agents import extractor, safety, executor, proactive, chitchat
 import sarvam_service
+import memory_engine
+from pydantic import BaseModel
+from typing import Optional
+import os
+import shutil
+import json
+import bcrypt
+import database
+import models
+import uuid
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import langfuse_client
 
 class RegisterRequest(BaseModel):
     name: str
@@ -26,15 +30,39 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
-
-app = FastAPI(title="Pharmacy Agent Backend")
-
 class CheckoutRequest(BaseModel):
     prescription_verified: bool = False
 
+
+app = FastAPI(title="MedAssist AI Backend")
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=Config.ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, Config.SECRET_KEY, algorithm=Config.ALGORITHM)
+    return encoded_jwt
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, Config.SECRET_KEY, algorithms=[Config.ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise credentials_exception
+        return user_id
+    except JWTError:
+        raise credentials_exception
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Allow all for dev
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -66,7 +94,7 @@ def add_to_financial_totals(new_sale: float):
         trace.end()
     
     # Optional debug print
-    print(f"[OBSERVABILITY] Transaction detected... Updating Total Revenue by ₹{new_sale:.2f}... New Total: ₹{total_revenue:.2f}")
+    print(f"[OBSERVABILITY] Transaction detected... Updating Total Revenue by INR{new_sale:.2f}... New Total: INR{total_revenue:.2f}")
 
 @app.on_event("startup")
 def startup_event():
@@ -81,7 +109,7 @@ def startup_event():
     total_revenue = float(base_revenue)
     total_profit = total_revenue * 0.40
     conn.close()
-    print(f"[STARTUP] Financials Initialized - Revenue: ₹{total_revenue:.2f}, Profit: ₹{total_profit:.2f}")
+    print(f"[STARTUP] Financials Initialized - Revenue: INR{total_revenue:.2f}, Profit: INR{total_profit:.2f}")
 
 @app.get("/api/dashboard/summary")
 def get_live_dashboard_summary():
@@ -104,7 +132,8 @@ def register_user(req: RegisterRequest):
         
     hashed_pwd = bcrypt.hashpw(req.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8') if req.password else ""
     user_id = database.create_customer(req.name, req.email, req.phone, hashed_pwd, req.auth_provider)
-    return {"status": "success", "user_id": user_id, "role": "client"}
+    access_token = create_access_token(data={"sub": user_id, "role": "client"})
+    return {"status": "success", "user_id": user_id, "access_token": access_token, "token_type": "bearer", "role": "client"}
 
 @app.post("/auth/login")
 def login_user(req: LoginRequest):
@@ -127,10 +156,12 @@ def login_user(req: LoginRequest):
     if not is_valid:
         raise HTTPException(status_code=401, detail="Invalid email or password")
         
-    return {"status": "success", "user_id": user["user_id"], "role": "client"}
+    role = user.get("role", "client")
+    access_token = create_access_token(data={"sub": user["user_id"], "role": role})
+    return {"status": "success", "user_id": user["user_id"], "access_token": access_token, "token_type": "bearer", "role": role}
 
 @app.get("/medicines")
-def get_medicines():
+def get_medicines(user_id: str = Depends(get_current_user)):
     return database.get_all_medicines()
 
 @app.get("/inventory/status")
@@ -139,7 +170,7 @@ def get_inventory_status():
     return {"medicines": meds}
 
 @app.post("/orders")
-def create_order(order: models.Order, background_tasks: BackgroundTasks):
+def create_order(order: models.Order, background_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
     # 1. Langfuse check
     trace = langfuse_client.trace_interaction("create_order", order.dict())
     
@@ -188,7 +219,7 @@ def fulfill_webhook(payload: dict):
 import agents
 
 @app.post("/agent/upload_prescription")
-async def upload_prescription(user_id: str = Form(...), session_id: Optional[str] = Form(None), file: UploadFile = File(...)):
+async def upload_prescription(session_id: Optional[str] = Form(None), file: UploadFile = File(...), user_id: str = Depends(get_current_user)):
     session_id = session_id or str(uuid.uuid4())
     # Save the file
     ext = os.path.splitext(file.filename)[1]
@@ -258,6 +289,15 @@ async def upload_prescription(user_id: str = Form(...), session_id: Optional[str
         doctor_name=extraction.get("doctor_name")
     )
     
+    # ── Store prescription details in the user's memory bank ──────────────────
+    memory_engine.store_prescription_memory(
+        user_id=user_id,
+        extraction_result=extraction,
+        matched_meds=added_meds,
+        unrecognized_meds=unrecognized,
+        file_type=mime_type,          # e.g. "image/jpeg" or "application/pdf"
+    )
+    
     # Chat response
     error_msg = extraction.get("error")
     if error_msg:
@@ -281,7 +321,6 @@ async def upload_prescription(user_id: str = Form(...), session_id: Optional[str
 
 class ChatRequest(BaseModel):
     text: str
-    user_id: Optional[str] = "GUEST"
     prescription_verified: Optional[bool] = False
     language: Optional[str] = "en-IN"
     session_id: Optional[str] = None
@@ -289,8 +328,7 @@ class ChatRequest(BaseModel):
 import uuid
 
 @app.post("/agent/chat")
-def agent_chat_process(request: ChatRequest):
-    user_id = request.user_id
+def agent_chat_process(request: ChatRequest, user_id: str = Depends(get_current_user)):
     raw_text = request.text.strip()
     session_id = request.session_id or str(uuid.uuid4())
     
@@ -326,6 +364,13 @@ def agent_chat_process(request: ChatRequest):
     if text.lower() in ["no", "cancel", "abort", "nevermind"]:
         resp = format_outbound_response("Order cancelled.")
         database.save_chat_message(user_id, "assistant", resp, session_id)
+        # Store cancellation in user memory
+        memory_engine.store_interaction_memory(
+            user_id=user_id,
+            user_text=raw_text,
+            extraction_result=None,
+            interaction_type="cancellation",
+        )
         return {"session_id": session_id, "result": resp}
 
     if text.lower() in ["yes", "confirm", "ok", "sure", "please", "confirm order"]:
@@ -381,10 +426,18 @@ def agent_chat_process(request: ChatRequest):
                 execution = agents.executor.run(safety, user_id=user_id)
                 if execution["status"] == "success":
                     med_names = ", ".join([m['name'] for m in safety['medicines']])
-                    resp_parts.append(f"Order Placed successfully for {med_names}. Total: ₹{execution['total_price']:.2f}.")
+                    resp_parts.append(f"Order Placed successfully for {med_names}. Total: INR{execution['total_price']:.2f}.")
                     
                     # Update global financial state
                     add_to_financial_totals(execution['total_price'])
+                    
+                    # Store confirmed order in user memory
+                    memory_engine.store_interaction_memory(
+                        user_id=user_id,
+                        user_text=raw_text,
+                        extraction_result={"medicines": approved_meds},
+                        interaction_type="confirmation",
+                    )
                     
                     execution_data = execution
                 else:
@@ -415,7 +468,7 @@ def agent_chat_process(request: ChatRequest):
         total_est = sum(item['price'] for item in cart_items)
         med_summary = ", ".join([f"{m['qty']}x {m['name']}" for m in formatted_meds])
         
-        eng_resp = f"You have {len(formatted_meds)} items in your cart. Total approx: ₹{total_est:.2f}. Do you want to confirm?"
+        eng_resp = f"You have {len(formatted_meds)} items in your cart. Total approx: INR{total_est:.2f}. Do you want to confirm?"
         resp = format_outbound_response(eng_resp)
         database.save_chat_message(user_id, "assistant", resp, session_id)
         langfuse_client.flush()
@@ -428,8 +481,8 @@ def agent_chat_process(request: ChatRequest):
             "status": "pending_confirmation"
         }
 
-    # 1. Extract Order
-    extraction = agents.extractor.run(text, user_id=user_id)
+    # 1. Extract Order (pass session_id so the agent can see the current conversation)
+    extraction = agents.extractor.run(text, user_id=user_id, session_id=session_id)
     llm_answer = extraction.get("answer", "I understood your request.")
 
     if not extraction["medicines"]:
@@ -499,20 +552,20 @@ def agent_chat_process(request: ChatRequest):
         "status": "cart_added"
     }
 
-@app.get("/cart/{user_id}")
-def get_user_cart(user_id: str):
+@app.get("/cart")
+def get_user_cart(user_id: str = Depends(get_current_user)):
     return database.get_cart(user_id)
 
-@app.delete("/cart/{user_id}")
-def clear_user_cart(user_id: str):
+@app.delete("/cart")
+def clear_user_cart(user_id: str = Depends(get_current_user)):
     database.clear_cart(user_id)
     return {"status": "cleared"}
 
 class RefillRequest(BaseModel):
     medicine: str
 
-@app.post("/cart/{user_id}/refill")
-def one_click_refill(user_id: str, req: RefillRequest):
+@app.post("/cart/refill")
+def one_click_refill(req: RefillRequest, user_id: str = Depends(get_current_user)):
     conn = database.get_db_connection()
     
     # Get last quantity logic to decide how much to refill
@@ -535,8 +588,8 @@ def one_click_refill(user_id: str, req: RefillRequest):
     
     return {"status": "success", "message": f"Added {qty_to_add}x {req.medicine} to cart", "qty": qty_to_add}
 
-@app.get("/chat/history/{user_id}")
-def get_chat_history(user_id: str, session_id: Optional[str] = None):
+@app.get("/chat/history")
+def get_chat_history(session_id: Optional[str] = None, user_id: str = Depends(get_current_user)):
     return database.get_chat_history(user_id, session_id)
 
 @app.get("/chat/sessions/{user_id}")
@@ -552,12 +605,12 @@ def get_proactive_alerts(user_id: Optional[str] = None):
         alerts = [a for a in alerts if a['user_id'] == user_id]
     return alerts
 
-@app.get("/orders/{user_id}")
-def get_user_orders(user_id: str):
+@app.get("/orders")
+def get_user_orders(user_id: str = Depends(get_current_user)):
     return database.get_orders_by_user(user_id)
 
-@app.post("/cart/{user_id}/checkout")
-def checkout_user_cart(user_id: str, request: CheckoutRequest):
+@app.post("/cart/checkout")
+def checkout_user_cart(request: CheckoutRequest, user_id: str = Depends(get_current_user)):
     cart_items = database.get_cart(user_id)
     if not cart_items:
          raise HTTPException(status_code=400, detail="Cart is empty")
@@ -585,23 +638,24 @@ class NotificationRequest(BaseModel):
     message: str
 
 @app.post("/notifications")
-def send_notification(note: NotificationRequest):
+def send_notification(note: NotificationRequest, user_id: str = Depends(get_current_user)):
     database.create_notification(note.user_id, note.message)
     return {"status": "sent", "user_id": note.user_id}
 
 @app.get("/notifications/{user_id}")
-def get_user_notifications(user_id: str):
+def get_user_notifications(user_id: str, current_user: str = Depends(get_current_user)):
+    # In production, check if current_user has access to target user_id
     return database.get_notifications(user_id)
 
 @app.get("/admin/approvals")
-def get_admin_approvals():
+def get_admin_approvals(user_id: str = Depends(get_current_user)):
     return database.get_all_approvals()
 
 class ApprovalStatusUpdate(BaseModel):
     status: str # "approved" or "rejected"
 
 @app.post("/admin/approvals/{approval_id}")
-def update_admin_approval(approval_id: int, update: ApprovalStatusUpdate):
+def update_admin_approval(approval_id: int, update: ApprovalStatusUpdate, admin_id: str = Depends(get_current_user)):
     if update.status not in ["approved", "rejected"]:
         raise HTTPException(status_code=400, detail="Invalid status")
     
@@ -646,15 +700,15 @@ def update_admin_approval(approval_id: int, update: ApprovalStatusUpdate):
 # --- PHASE 3: ADMIN DASHBOARD ANALYTICS ENDPOINTS ---
 
 @app.get("/api/dashboard/summary")
-def api_dashboard_summary():
+def api_dashboard_summary(user_id: str = Depends(get_current_user)):
     return get_live_dashboard_summary()
 
 @app.get("/api/sales/analytics")
-def api_sales_analytics():
+def api_sales_analytics(user_id: str = Depends(get_current_user)):
     return database.get_sales_analytics()
 
 @app.get("/api/inventory")
-def api_inventory():
+def api_inventory(user_id: str = Depends(get_current_user)):
     return database.get_inventory_analytics()
 
 class AddMedicineRequest(BaseModel):
@@ -664,7 +718,7 @@ class AddMedicineRequest(BaseModel):
     stock: int
 
 @app.post("/api/inventory/add")
-def api_add_inventory(req: AddMedicineRequest):
+def api_add_inventory(req: AddMedicineRequest, user_id: str = Depends(get_current_user)):
     success = database.add_medicine(req.name, req.category, req.price, req.stock)
     if not success:
         raise HTTPException(status_code=400, detail="Failed to add medicine. It may already exist.")
@@ -679,7 +733,7 @@ def api_add_inventory(req: AddMedicineRequest):
     return {"status": "success", "message": "Medicine added successfully"}
 
 @app.get("/api/refill/predictions")
-def api_refill_predictions():
+def api_refill_predictions(user_id: str = Depends(get_current_user)):
     alerts = agents.proactive.run_scan()
     mapped_alerts = []
     for a in alerts:
@@ -695,20 +749,20 @@ def api_refill_predictions():
     return mapped_alerts
 
 @app.get("/api/approvals")
-def api_approvals():
+def api_approvals(user_id: str = Depends(get_current_user)):
     return database.get_all_approvals()
 
 @app.post("/api/approvals/{approval_id}")
-def api_update_approval(approval_id: int, update: ApprovalStatusUpdate):
-    return update_admin_approval(approval_id, update)
+def api_update_approval(approval_id: int, update: ApprovalStatusUpdate, user_id: str = Depends(get_current_user)):
+    return update_admin_approval(approval_id, update, user_id)
 
 @app.get("/api/users")
-def api_get_users():
+def api_get_users(user_id: str = Depends(get_current_user)):
     return database.get_all_customers()
 
-@app.get("/api/users/{user_id}")
-def api_get_user(user_id: str):
-    user = database.get_customer_by_id(user_id)
+@app.get("/api/users/{target_user_id}")
+def api_get_user(target_user_id: str, user_id: str = Depends(get_current_user)):
+    user = database.get_customer_by_id(target_user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
@@ -716,14 +770,14 @@ def api_get_user(user_id: str):
 # --- RESTOCK REQUESTS ---
 
 @app.get("/api/restocks")
-def api_get_restocks():
+def api_get_restocks(user_id: str = Depends(get_current_user)):
     return database.get_pending_restock_requests()
 
 class RestockApprovalUpdate(BaseModel):
     amount_to_add: int
 
 @app.post("/api/restocks/{request_id}/approve")
-def api_approve_restock(request_id: int, update: RestockApprovalUpdate):
+def api_approve_restock(request_id: int, update: RestockApprovalUpdate, user_id: str = Depends(get_current_user)):
     req = database.get_restock_request_by_id(request_id)
     if not req:
         raise HTTPException(status_code=404, detail="Restock request not found")
@@ -743,7 +797,7 @@ def api_approve_restock(request_id: int, update: RestockApprovalUpdate):
     return {"status": "success", "message": f"Added {update.amount_to_add} to {req['medicine']}"}
 
 @app.post("/api/restocks/{request_id}/reject")
-def api_reject_restock(request_id: int):
+def api_reject_restock(request_id: int, user_id: str = Depends(get_current_user)):
     req = database.get_restock_request_by_id(request_id)
     if not req:
         raise HTTPException(status_code=404, detail="Restock request not found")
