@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, CheckCircle, XCircle, FileText, User, Sun, Moon } from 'lucide-react';
-import axios from 'axios';
+import api from '../../api';
 
 export default function Topbar({ isDarkMode = false, toggleDarkMode }) {
   const [showNotifications, setShowNotifications] = useState(false);
@@ -14,7 +14,7 @@ export default function Topbar({ isDarkMode = false, toggleDarkMode }) {
 
   const fetchApprovals = async () => {
     try {
-      const res = await axios.get('http://localhost:8000/api/approvals');
+      const res = await api.get('/api/approvals');
       const approvals = res.data
         .filter(app => app.status === 'pending' || app.status === 'uploaded')
         .map(app => ({
@@ -31,7 +31,7 @@ export default function Topbar({ isDarkMode = false, toggleDarkMode }) {
 
   const handleApprove = async (notif) => {
     try {
-      await axios.post(`http://localhost:8000/api/approvals/${notif.id}`, { status: "approved" });
+      await api.post(`/api/approvals/${notif.id}`, { status: "approved" });
       setNotifications(prev => prev.filter(n => n.id !== notif.id));
       const event = new CustomEvent('add-trace', {
         detail: {
@@ -47,7 +47,7 @@ export default function Topbar({ isDarkMode = false, toggleDarkMode }) {
 
   const handleReject = async (id) => {
     try {
-      await axios.post(`http://localhost:8000/api/approvals/${id}`, { status: "rejected" });
+      await api.post(`/api/approvals/${id}`, { status: "rejected" });
       setNotifications(prev => prev.filter(n => n.id !== id));
     } catch (err) {
       console.error("Error rejecting request:", err);

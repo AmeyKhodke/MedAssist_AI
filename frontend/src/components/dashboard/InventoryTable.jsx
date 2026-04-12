@@ -1,3 +1,6 @@
+import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { Terminal, Search, Package, CheckCircle2, AlertTriangle, Activity } from 'lucide-react';
 import api from '../../api';
 
 export default function InventoryTable({ isDarkMode = true }) {

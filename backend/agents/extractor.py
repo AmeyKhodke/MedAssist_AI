@@ -115,7 +115,16 @@ class OrderExtractorAgent:
         
         Our Current Inventory (Name | Price | Stock | Rx Required): 
         {catalog_data}
-        ... (rest same schema) ...
+        
+        EXPECTED JSON SCHEMA:
+        {{
+            "answer": "Warm conversational reply",
+            "pending_item_name": "Medicine name if quantity is missing, else null",
+            "medicines": [
+                {{"name": "Exact Medicine Name", "qty": 1}}
+            ],
+            "suggestions": ["List of similar medicines if not found"]
+        }}
         """
 
         if not self.client:

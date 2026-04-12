@@ -14,8 +14,16 @@ class SafetyCheckerAgent:
         conn = database.get_db_connection()
         
         for item in mds:
-            med_name = item["name"]
-            qty = item["qty"]
+            med_name = item.get("name")
+            if not med_name:
+                continue
+            
+            qty = item.get("qty", item.get("quantity", 1))
+            try:
+                qty = int(qty)
+            except ValueError:
+                qty = 1
+            item["qty"] = qty # ensure it's set for executor
             
             row = conn.execute("SELECT * FROM medicines WHERE name = ?", (med_name,)).fetchone()
             if not row:

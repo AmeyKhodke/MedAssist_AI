@@ -4,6 +4,38 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { TrendingUp, Filter, Share2, Download, Zap } from 'lucide-react';
 import api from '../../api';
 
+const FILTERS = [
+  { label: 'YTD', value: 'year' },
+  { label: '6M', value: '6months' },
+  { label: '30D', value: 'month' },
+  { label: '7D', value: 'week' }
+];
+
+const filterData = (data, filterType) => {
+  if (!data || data.length === 0) return [];
+  
+  // In a real hackathon context, we assume the latest record is our "now" or we just use new Date()
+  // Data dates might be old, so let's check max date in data if we want relative filtering, 
+  // or simply filter by strict days from today. Let's use strict days from today.
+  const now = new Date();
+  
+  return data.filter(item => {
+    const itemDate = new Date(item.raw_date);
+    const diffTime = Math.abs(now - itemDate);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    // As it is a static database export with past dates from hackathon datasets, 
+    // we should just show all data if "year" is selected. Let's make "year" return all for demo purposes.
+    switch(filterType) {
+      case 'week': return diffDays <= 7;
+      case 'month': return diffDays <= 30;
+      case '6months': return diffDays <= 180;
+      case 'year': return true; // Show all for YTD in demo
+      default: return true;
+    }
+  });
+};
+
 export default function SalesChart({ isDarkMode = true, onFilteredData }) {
   const [allData, setAllData] = useState([]);
   const [filter, setFilter]   = useState('year');

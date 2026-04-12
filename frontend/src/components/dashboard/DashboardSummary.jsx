@@ -44,6 +44,13 @@ export default function DashboardSummary({ isDarkMode = true, salesData = null, 
   const revenueTrend = sparkData.map(d => ({ value: d.total_sales  }));
   const profitTrend  = sparkData.map(d => ({ value: d.total_profit }));
 
+  const FILTER_LABELS = {
+    today: 'Today',
+    week: 'This Week',
+    month: 'This Month',
+    year: 'This Year'
+  };
+
   const filterLabel = FILTER_LABELS[activeFilter] || 'Selected period';
 
   return (
