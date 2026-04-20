@@ -768,10 +768,6 @@ Please ensure your code follows the existing patterns and includes appropriate d
 
 ---
 
-## 📄 License
-
-This project is open-source and available under the [MIT License](LICENSE).
-
 ---
 
 ## 🙏 Acknowledgments
